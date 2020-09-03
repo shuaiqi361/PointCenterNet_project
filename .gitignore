@@ -1,0 +1,8 @@
+*.tar
+.idea/*
+__pycache__/*
+datasets/__pycache__/*
+nets/__pycache__/*
+lib/__pycache__/*
+experiments/*
+utils/__pycache__/*
