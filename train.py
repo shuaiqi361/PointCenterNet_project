@@ -5,6 +5,7 @@ import argparse
 # from easydict import EasyDict
 # import json
 # import yaml
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
 
@@ -178,10 +179,11 @@ def main():
     max_per_image = 100
 
     results = {}
+    speed_list = []
     with torch.no_grad():
       for inputs in val_loader:
         img_id, inputs = inputs[0]
-
+        start_image_time = time.time()
         detections = []
         for scale in inputs:
           inputs[scale]['image'] = inputs[scale]['image'].to(cfg.device)
@@ -207,6 +209,7 @@ def main():
 
           detections.append(top_preds)
 
+        end_image_time = time.time()
         bbox_and_scores = {j: np.concatenate([d[j] for d in detections], axis=0)
                            for j in range(1, val_dataset.num_classes + 1)}
         scores = np.hstack([bbox_and_scores[j][:, 4] for j in range(1, val_dataset.num_classes + 1)])
@@ -218,19 +221,25 @@ def main():
             bbox_and_scores[j] = bbox_and_scores[j][keep_inds]
 
         results[img_id] = bbox_and_scores
+        speed_list.append(end_image_time - start_image_time)
 
     eval_results = val_dataset.run_eval(results, save_dir=cfg.ckpt_dir)
     print(eval_results)
     summary_writer.add_scalar('val_mAP/mAP', eval_results[0], epoch)
+    print('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))
 
   print('Starting training...')
   for epoch in range(1, cfg.num_epochs + 1):
-    train_sampler.set_epoch(epoch)
-    train(epoch)
-    if cfg.val_interval > 0 and epoch % cfg.val_interval == 0:
-      val_map(epoch)
-    print(saver.save(model.module.state_dict(), 'checkpoint'))
-    lr_scheduler.step(epoch)  # move to here after pytorch1.1.0
+      start = time.time()
+      train_sampler.set_epoch(epoch)
+      train(epoch)
+      if cfg.val_interval > 0 and epoch % cfg.val_interval == 0:
+          val_map(epoch)
+          print(saver.save(model.module.state_dict(), 'checkpoint'))
+      lr_scheduler.step(epoch)  # move to here after pytorch1.1.0
+
+      epoch_time = (time.time() - start) / 3600. / 24.
+      print('ETA:{:.2f} Days'.format((cfg.num_epochs - epoch) * epoch_time))
 
   summary_writer.close()
 
