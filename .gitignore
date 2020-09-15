@@ -6,3 +6,5 @@ nets/__pycache__/*
 lib/__pycache__/*
 experiments/*
 utils/__pycache__/*
+Data/*
+lib/*

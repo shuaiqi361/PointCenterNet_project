@@ -119,7 +119,7 @@ class PascalVOC(data.Dataset):
       bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.fmap_size['h'] - 1)
       h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
       if h > 0 and w > 0:
-        obj_c = np.array([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2], dtype=np.float32)
+        obj_c = np.array([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2], dtype=np.float32)  # in xyxy format
         obj_c_int = obj_c.astype(np.int32)
 
         radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
@@ -151,7 +151,7 @@ class PascalVOC_eval(PascalVOC):
     height, width = image.shape[0:2]
 
     out = {}
-    for scale in self.test_scales:
+    for scale in self.test_scales:  # scale is an integer 1,2, ...
       new_height = int(height * scale)
       new_width = int(width * scale)
 
@@ -161,7 +161,7 @@ class PascalVOC_eval(PascalVOC):
         scaled_size = max(height, width) * 1.0
         scaled_size = np.array([scaled_size, scaled_size], dtype=np.float32)
       else:
-        img_height = (new_height | self.padding) + 1
+        img_height = (new_height | self.padding) + 1  # clip values: 118 --> 128
         img_width = (new_width | self.padding) + 1
         center = np.array([new_width // 2, new_height // 2], dtype=np.float32)
         scaled_size = np.array([img_width, img_height], dtype=np.float32)
@@ -188,7 +188,7 @@ class PascalVOC_eval(PascalVOC):
 
   def convert_eval_format(self, all_bboxes):
     # all_bboxes: num_samples x num_classes x 5
-    detections = [[] for _ in self.class_names[1:]]
+    detections = [[] for _ in self.class_names[1:]]  # no background class, must not shuffle the test set
     for i in range(self.num_samples):
       img_id = self.images[i]
       img_name = self.coco.loadImgs(ids=[img_id])[0]['file_name'].split('.')[0]
@@ -202,7 +202,7 @@ class PascalVOC_eval(PascalVOC):
   def run_eval(self, results, save_dir=None):
     detections = self.convert_eval_format(results)
     if save_dir is not None:
-      torch.save(detections, os.path.join(save_dir, 'results.t7'))
+      torch.save(detections, os.path.join(save_dir, 'results_voc.t7'))
     eval_map = eval_mAP(os.path.join(self.data_dir, 'VOCdevkit'))
     aps, map = eval_map.do_python_eval(detections)
     return map, aps
