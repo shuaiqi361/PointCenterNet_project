@@ -188,7 +188,7 @@ class PascalVOC_eval(PascalVOC):
 
   def convert_eval_format(self, all_bboxes):
     # all_bboxes: num_samples x num_classes x 5
-    detections = [[] for _ in self.class_names[1:]]  # no background class, must not shuffle the test set
+    detections = [[] for _ in self.class_names[1:]]  # no background class
     for i in range(self.num_samples):
       img_id = self.images[i]
       img_name = self.coco.loadImgs(ids=[img_id])[0]['file_name'].split('.')[0]

@@ -22,7 +22,7 @@ import torch.distributed as dist
 # from datasets.pascal import PascalVOC, PascalVOC_eval
 from datasets.detrac import DETRAC, DETRAC_eval
 
-from nets.hourglass import get_hourglass
+from nets.hourglass import exkp
 from nets.resdcn import get_pose_net
 
 from utils.utils import _tranpose_and_gather_feature, load_model
@@ -44,7 +44,7 @@ parser.add_argument('--log_name', type=str, default='test')
 # parser.add_argument('--pretrain_name', type=str, default='pretrain')
 parser.add_argument('--pretrain_checkpoint', type=str)
 
-parser.add_argument('--dataset', type=str, default='coco', choices=['coco', 'pascal'])
+parser.add_argument('--dataset', type=str, default='coco', choices=['DETRAC'])
 parser.add_argument('--arch', type=str, default='large_hourglass')
 
 parser.add_argument('--img_size', type=int, default=512)
@@ -112,19 +112,21 @@ def main():
                                                pin_memory=True,
                                                drop_last=True,
                                                sampler=train_sampler if cfg.dist else None)
-
+    num_classes = train_dataset.num_classes
     if cfg.dataset.upper() == 'DETRAC':
         Dataset_eval = DETRAC_eval
     else:
         raise NotImplementedError
-    val_dataset = Dataset_eval(cfg.data_dir, 'val', test_scales=[1.], test_flip=False)
+    val_dataset = Dataset_eval(cfg.data_dir, 'test', test_scales=[1.], test_flip=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
-                                             shuffle=False, num_workers=1, pin_memory=True,
+                                             shuffle=False, num_workers=1, pin_memory=False,
                                              collate_fn=val_dataset.collate_fn)
 
     print('Creating model...')
     if 'hourglass' in cfg.arch:
-        model = get_hourglass[cfg.arch]
+        # model = get_hourglass[cfg.arch]
+        model = exkp(n=5, nstack=2, dims=[256, 256, 384, 384, 384, 512],
+                     modules=[2, 2, 2, 2, 2, 4], num_classes=num_classes)
     elif 'resdcn' in cfg.arch:
         model = get_pose_net(num_layers=int(cfg.arch.split('_')[-1]), num_classes=train_dataset.num_classes)
     else:
@@ -155,6 +157,8 @@ def main():
         for batch_idx, batch in enumerate(train_loader):
             for k in batch:
                 if k != 'meta':
+                    # print(k)
+                    # print(batch)
                     batch[k] = batch[k].to(device=cfg.device, non_blocking=True)
 
             outputs = model(batch['image'])

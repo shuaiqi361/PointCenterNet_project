@@ -28,7 +28,7 @@ class DETRAC(data.Dataset):
     def __init__(self, data_dir, split, split_ratio=1.0, img_size=512):
         super(DETRAC, self).__init__()
         self.num_classes = 4
-        self.class_name = DETRAC_NAMES
+        self.class_names = DETRAC_NAMES
         self.valid_ids = DETRAC_IDS
         self.cat_ids = {v: i for i, v in enumerate(self.valid_ids)}
 
@@ -80,11 +80,14 @@ class DETRAC(data.Dataset):
         img_path = img_struct['image_path']
         # ann_ids = self.coco.getAnnIds(imgIds=[img_id])
         # annotations = self.coco.loadAnns(ids=ann_ids)
-        labels = img_struct['labels']
-        bboxes = np.array(img_struct['bboxes'], dtype=np.float32)
-        # if len(bboxes) == 0:
-        #   bboxes = np.array([[0., 0., 0., 0.]], dtype=np.float32)
-        #   labels = np.array([[0]])
+        labels = np.array([[ll - 1] for ll in img_struct['labels']])  # cat_id starts from 0, different from IDS
+        bboxes = np.array([bbox for bbox in img_struct['bboxes']], dtype=np.float32)
+        # labels = np.array([self.cat_ids[anno['category_id']] for anno in annotations])
+        # bboxes = np.array([anno['bbox'] for anno in annotations], dtype=np.float32)
+
+        if len(bboxes) == 0:
+            bboxes = np.array([[0., 0., 0., 0.]], dtype=np.float32)
+            labels = np.array([[0]])
         # bboxes[:, 2:] += bboxes[:, :2]  # xywh to xyxy
 
         img = cv2.imread(img_path)
@@ -154,6 +157,7 @@ class DETRAC(data.Dataset):
                 obj_c_int = obj_c.astype(np.int32)
 
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
+                # print(label, hmap.shape)
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 w_h_[k] = 1. * w, 1. * h
                 regs[k] = obj_c - obj_c_int  # discretization error
@@ -246,7 +250,7 @@ class DETRAC_eval(DETRAC):
         detections = self.convert_eval_format(results)
         if save_dir is not None:
             torch.save(detections, os.path.join(save_dir, 'results_detrac.t7'))
-        eval_map = eval_mAP(os.path.join(self.data_dir, 'DETRAC'))
+        eval_map = eval_mAP(self.data_dir)
         aps, map = eval_map.do_python_eval(detections)
         return map, aps
 
@@ -399,8 +403,8 @@ class eval_mAP:
             for i, imagepath in enumerate(image_paths):
                 annot_struct = img_structs[i]
                 recs[imagepath] = self.parse_record(annot_struct)
-                if i % 100 == 0:
-                    print('Reading annotation for {:d}/{:d}'.format(i + 1, len(image_paths)))
+                # if i % 100 == 0:
+                #     print('Reading annotation for {:d}/{:d}'.format(i + 1, len(image_paths)))
             # save
             print('Saving cached annotations to {:s}'.format(cachefile))
             with open(cachefile, 'wb') as f:
