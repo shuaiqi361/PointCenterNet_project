@@ -101,6 +101,9 @@ class COCO(data.Dataset):
                 labels.append(self.cat_ids[anno['category_id']])
                 bboxes.append(anno['bbox'])
 
+        labels = np.array(labels)
+        bboxes = np.array(bboxes, dtype=np.float32)
+        
         if len(bboxes) == 0:
             bboxes = np.array([[0., 0., 0., 0.]], dtype=np.float32)
             labels = np.array([[0]])

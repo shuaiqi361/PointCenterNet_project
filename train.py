@@ -40,7 +40,7 @@ parser.add_argument('--dist', action='store_true')
 parser.add_argument('--root_dir', type=str, default='./')
 parser.add_argument('--data_dir', type=str, default='./data')
 parser.add_argument('--log_name', type=str, default='test')
-parser.add_argument('--pretrain_name', type=str, default='pretrain')
+parser.add_argument('--pretrain_checkpoint', type=str)
 
 parser.add_argument('--dataset', type=str, default='coco', choices=['coco', 'pascal'])
 parser.add_argument('--arch', type=str, default='large_hourglass')
@@ -65,7 +65,7 @@ os.chdir(cfg.root_dir)
 
 cfg.log_dir = os.path.join(cfg.root_dir, 'logs', cfg.log_name)
 cfg.ckpt_dir = os.path.join(cfg.root_dir, 'ckpt', cfg.log_name)
-cfg.pretrain_dir = os.path.join(cfg.root_dir, 'ckpt', cfg.pretrain_name, 'checkpoint.t7')
+# cfg.pretrain_dir = os.path.join(cfg.root_dir, 'ckpt', cfg.pretrain_name, 'checkpoint.t7')
 
 os.makedirs(cfg.log_dir, exist_ok=True)
 os.makedirs(cfg.ckpt_dir, exist_ok=True)
@@ -102,7 +102,7 @@ def main():
                                              if cfg.dist else cfg.batch_size,
                                              shuffle=not cfg.dist,
                                              num_workers=cfg.num_workers,
-                                             pin_memory=True,
+                                             pin_memory=False,
                                              drop_last=True,
                                              sampler=train_sampler if cfg.dist else None)
 
@@ -127,10 +127,14 @@ def main():
                                                 device_ids=[cfg.local_rank, ],
                                                 output_device=cfg.local_rank)
   else:
-    model = nn.DataParallel(model).to(cfg.device)
+      model = nn.DataParallel(model, device_ids=[cfg.local_rank, ]).to(cfg.device)
 
-  if os.path.isfile(cfg.pretrain_dir):
-    model = load_model(model, cfg.pretrain_dir)
+  if cfg.pretrain_checkpoint is not None and os.path.isfile(cfg.pretrain_checkpoint):
+      print('Load pretrain model from ' + cfg.pretrain_checkpoint)
+      model = load_model(model, cfg.pretrain_checkpoint, cfg.device_id)
+  # if os.path.isfile(cfg.pretrain_dir):
+  #   model = load_model(model, cfg.pretrain_dir)
+
 
   optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
   lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.1)
@@ -245,5 +249,6 @@ def main():
 
 
 if __name__ == '__main__':
-  with DisablePrint(local_rank=cfg.local_rank):
-    main()
+    # print(cfg.local_rank, cfg.device_id)
+    with DisablePrint(local_rank=cfg.local_rank):
+        main()
