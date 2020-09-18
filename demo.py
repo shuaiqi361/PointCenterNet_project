@@ -171,7 +171,7 @@ def main():
 
     fig.patch.set_visible(False)
     plt.axis('off')
-    plt.savefig('data/demo_results.png', dpi=300, transparent=True)
+    plt.savefig('demo_results.png', dpi=300, transparent=True)
     plt.show()
 
 

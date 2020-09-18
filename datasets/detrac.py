@@ -32,7 +32,7 @@ class DETRAC(data.Dataset):
         self.valid_ids = DETRAC_IDS
         self.cat_ids = {v: i for i, v in enumerate(self.valid_ids)}
 
-        self.data_rng = np.random.RandomState(111)
+        self.data_rng = np.random.RandomState(112)
         self.eig_val = np.array(DETRAC_EIGEN_VALUES, dtype=np.float32)
         self.eig_vec = np.array(DETRAC_EIGEN_VECTORS, dtype=np.float32)
         self.mean = np.array(DETRAC_MEAN, dtype=np.float32)[None, None, :]
@@ -57,7 +57,7 @@ class DETRAC(data.Dataset):
         self.down_ratio = 4
         self.img_size = {'h': img_size, 'w': img_size}
         self.fmap_size = {'h': img_size // self.down_ratio, 'w': img_size // self.down_ratio}
-        self.rand_scales = np.arange(0.6, 1.4, 0.1)
+        self.rand_scales = np.arange(0.7, 1.3, 0.1)
         self.gaussian_iou = 0.7
 
         print('==> initializing UA-DETRAC %s data.' % split)
@@ -80,7 +80,7 @@ class DETRAC(data.Dataset):
         img_path = img_struct['image_path']
         # ann_ids = self.coco.getAnnIds(imgIds=[img_id])
         # annotations = self.coco.loadAnns(ids=ann_ids)
-        labels = np.array([[ll - 1] for ll in img_struct['labels']])  # cat_id starts from 0, different from IDS
+        labels = np.array([ll for ll in img_struct['labels']])  # cat_id starts from 1, different from coco
         bboxes = np.array([bbox for bbox in img_struct['bboxes']], dtype=np.float32)
         # labels = np.array([self.cat_ids[anno['category_id']] for anno in annotations])
         # bboxes = np.array([anno['bbox'] for anno in annotations], dtype=np.float32)
@@ -112,18 +112,19 @@ class DETRAC(data.Dataset):
         img = cv2.warpAffine(img, trans_img, (self.img_size['w'], self.img_size['h']))
 
         # -----------------------------------debug---------------------------------
+        # image_show = img.copy()
         # for bbox, label in zip(bboxes, labels):
-        #   if flipped:
-        #     bbox[[0, 2]] = width - bbox[[2, 0]] - 1
-        #   bbox[:2] = affine_transform(bbox[:2], trans_img)
-        #   bbox[2:] = affine_transform(bbox[2:], trans_img)
-        #   bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
-        #   bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
-        #   cv2.rectangle(img, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
-        #   cv2.putText(img, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
-        #               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        # cv2.imshow('img', img)
-        # cv2.waitKey(100)
+        #     if flipped:
+        #         bbox[[0, 2]] = width - bbox[[2, 0]] - 1
+        #     bbox[:2] = affine_transform(bbox[:2], trans_img)
+        #     bbox[2:] = affine_transform(bbox[2:], trans_img)
+        #     bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
+        #     bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
+        #     cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
+        #     cv2.putText(image_show, self.class_names[int(label)], (int(bbox[0]), int(bbox[1])), cv2.FONT_HERSHEY_SIMPLEX,
+        #                 0.5, (255, 255, 255), 1)
+        # cv2.imshow('img', image_show)
+        # cv2.waitKey()
         # -----------------------------------debug---------------------------------
 
         img = img.astype(np.float32) / 255.
@@ -158,17 +159,22 @@ class DETRAC(data.Dataset):
 
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 # print(label, hmap.shape)
-                draw_umich_gaussian(hmap[label], obj_c_int, radius)
+                draw_umich_gaussian(hmap[int(label) - 1], obj_c_int, radius)
                 w_h_[k] = 1. * w, 1. * h
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
                 ind_masks[k] = 1
-                # groundtruth bounding box coordinate with class
-                # detections.append([obj_c[0] - w / 2, obj_c[1] - h / 2,
-                #                    obj_c[0] + w / 2, obj_c[1] + h / 2, 1, label])
 
-        # detections = np.array(detections, dtype=np.float32) \
-        #   if len(detections) > 0 else np.zeros((1, 6), dtype=np.float32)
+        # -----------------------------------debug---------------------------------
+        # canvas = np.zeros((self.fmap_size['h'] * 2, self.fmap_size['w'] * 2), dtype=np.float32)
+        # canvas[0:self.fmap_size['h'], 0:self.fmap_size['w']] = hmap[0, :, :]
+        # canvas[0:self.fmap_size['h'], self.fmap_size['w']:] = hmap[1, :, :]
+        # canvas[self.fmap_size['h']:, 0:self.fmap_size['w']] = hmap[2, :, :]
+        # canvas[self.fmap_size['h']:, self.fmap_size['w']:] = hmap[3, :, :]
+        # print(w_h_[0], regs[0])
+        # cv2.imshow('hmap', canvas)
+        # cv2.waitKey()
+        # -----------------------------------debug---------------------------------
 
         return {'image': img,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
@@ -241,7 +247,7 @@ class DETRAC_eval(DETRAC):
             for j in range(1, self.num_classes + 1):
                 if len(all_bboxes[img_id][j]) > 0:
                     for bbox in all_bboxes[img_id][j]:
-                        detections[j - 1].append((img_path, bbox[-1], *bbox[:-1]))  # append image path instead of name
+                        detections[j - 1].append((img_id, bbox[-1], *bbox[:-1]))  # append image path instead of name
                         # detections[j - 1].append((img_name, bbox[-1], *bbox[:-1]))
         detections = {cls: det for cls, det in zip(self.class_names[1:], detections)}
         return detections
@@ -278,8 +284,8 @@ class eval_mAP:
         objects = []
         for b in range(len(image_struct['labels'])):
             obj_struct = dict()
-            obj_struct['name'] = image_struct['class_names']
-            obj_struct['bbox'] = image_struct['bboxes']
+            obj_struct['name'] = image_struct['class_names'][b]
+            obj_struct['bbox'] = image_struct['bboxes'][b]
             # obj_struct['name'] = obj.find('name').text
             # obj_struct['pose'] = obj.find('pose').text
             # obj_struct['truncated'] = int(obj.find('truncated').text)
@@ -392,17 +398,18 @@ class eval_mAP:
         # with open(imagesetfile, 'r') as f:
         #     lines = f.readlines()
         # imagenames = [x.strip() for x in lines]
-        with open(self.imgpath, 'r') as f:
+        with open(imagesetfile, 'r') as f:
             image_paths = json.load(f)
-        with open(self.annopath, 'r') as ff:
+        with open(annopath, 'r') as ff:
             img_structs = json.load(ff)
 
         if not os.path.isfile(cachefile):
             # load annotations
             recs = {}
-            for i, imagepath in enumerate(image_paths):
-                annot_struct = img_structs[i]
-                recs[imagepath] = self.parse_record(annot_struct)
+            for i, annot_struct in enumerate(img_structs):
+                # annot_struct = img_structs[i]
+                img_id = annot_struct['image_id']
+                recs[img_id] = self.parse_record(annot_struct)
                 # if i % 100 == 0:
                 #     print('Reading annotation for {:d}/{:d}'.format(i + 1, len(image_paths)))
             # save
@@ -420,8 +427,9 @@ class eval_mAP:
         # extract gt objects for this class
         class_recs = {}
         npos = 0
-        for imagepath in image_paths:
-            R = [obj for obj in recs[imagepath] if obj['name'] == classname]
+        for annot_struct in img_structs:
+            img_id = annot_struct['image_id']
+            R = [obj for obj in recs[img_id] if obj['name'] == classname]
             bbox = np.array([x['bbox'] for x in R])
             if use_difficult:
                 difficult = np.array([False for x in R]).astype(np.bool)
@@ -429,9 +437,9 @@ class eval_mAP:
                 difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
             det = [False] * len(R)
             npos = npos + sum(~difficult)
-            class_recs[imagepath] = {'bbox': bbox,
-                                     'difficult': difficult,
-                                     'det': det}
+            class_recs[img_id] = {'bbox': bbox,
+                                  'difficult': difficult,
+                                  'det': det}
 
         # read dets
         image_ids = [x[0] for x in cls_detections]
@@ -501,20 +509,31 @@ class eval_mAP:
 if __name__ == '__main__':
     from tqdm import tqdm
 
-    train_dataset = DETRAC('/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/Data',
+    train_dataset = DETRAC('/home/keyi/Documents/research/code/PointCenterNet_project/Data',
                            'train', img_size=512)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=2,
-                                               shuffle=True, num_workers=0,
-                                               pin_memory=True, drop_last=True)
-
-    for b in tqdm(train_dataset):
+    # train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,
+    #                                                                 num_replicas=1,
+    #                                                                 rank=0)
+    # train_loader = torch.utils.data.DataLoader(train_dataset,
+    #                                            batch_size=1,
+    #                                            shuffle=True,
+    #                                            num_workers=1,
+    #                                            pin_memory=True,
+    #                                            drop_last=True,
+    #                                            sampler=None)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1,
+                                               shuffle=False, num_workers=0,
+                                               pin_memory=False, drop_last=True)
+    for batch_idx, batch in enumerate(train_loader):
         pass
-
-    val_dataset = DETRAC_eval('/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/Data', 'test')
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
-                                             shuffle=True, num_workers=0,
-                                             pin_memory=True, drop_last=True,
-                                             collate_fn=val_dataset.collate_fn)
+    # for b in tqdm(train_dataset):
+    #     pass
+    #
+    # val_dataset = DETRAC_eval('/home/keyi/Documents/research/code/PointCenterNet_project/Data', 'test')
+    # val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
+    #                                          shuffle=True, num_workers=0,
+    #                                          pin_memory=True, drop_last=True,
+    #                                          collate_fn=val_dataset.collate_fn)
 
     # for d in tqdm(val_dataset):
     #   pass

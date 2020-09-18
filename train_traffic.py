@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
-# from datasets.coco import COCO, COCO_eval
+from datasets.coco import COCO, COCO_eval
 # from datasets.pascal import PascalVOC, PascalVOC_eval
 from datasets.detrac import DETRAC, DETRAC_eval
 
@@ -44,7 +44,7 @@ parser.add_argument('--log_name', type=str, default='test')
 # parser.add_argument('--pretrain_name', type=str, default='pretrain')
 parser.add_argument('--pretrain_checkpoint', type=str)
 
-parser.add_argument('--dataset', type=str, default='coco', choices=['DETRAC'])
+parser.add_argument('--dataset', type=str, default='coco', choices=['DETRAC', 'coco'])
 parser.add_argument('--arch', type=str, default='large_hourglass')
 
 parser.add_argument('--img_size', type=int, default=512)
@@ -98,6 +98,8 @@ def main():
     # Dataset = COCO if cfg.dataset == 'coco' else PascalVOC
     if cfg.dataset.upper() == 'DETRAC':
         Dataset = DETRAC
+    elif cfg.dataset.lower() == 'coco':
+        Dataset = COCO
     else:
         raise NotImplementedError
     train_dataset = Dataset(cfg.data_dir, 'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size)
@@ -115,6 +117,8 @@ def main():
     num_classes = train_dataset.num_classes
     if cfg.dataset.upper() == 'DETRAC':
         Dataset_eval = DETRAC_eval
+    elif cfg.dataset.lower() == 'coco':
+        Dataset_eval = COCO_eval
     else:
         raise NotImplementedError
     val_dataset = Dataset_eval(cfg.data_dir, 'test', test_scales=[1.], test_flip=False)
