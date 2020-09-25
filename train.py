@@ -34,7 +34,7 @@ from utils.post_process import ctdet_decode
 parser = argparse.ArgumentParser(description='simple_centernet45')
 
 parser.add_argument('--local_rank', type=int, default=0)
-parser.add_argument('--device_id', type=int, default=1)  # specify device id for single GPU training
+parser.add_argument('--device_id', type=int, default=0)  # specify device id for single GPU training
 parser.add_argument('--dist', action='store_true')
 
 parser.add_argument('--root_dir', type=str, default='./')
@@ -132,9 +132,6 @@ def main():
   if cfg.pretrain_checkpoint is not None and os.path.isfile(cfg.pretrain_checkpoint):
       print('Load pretrain model from ' + cfg.pretrain_checkpoint)
       model = load_model(model, cfg.pretrain_checkpoint, cfg.device_id)
-  # if os.path.isfile(cfg.pretrain_dir):
-  #   model = load_model(model, cfg.pretrain_dir)
-
 
   optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
   lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.1)

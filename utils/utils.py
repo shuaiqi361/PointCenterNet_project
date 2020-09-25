@@ -73,6 +73,8 @@ def load_model(model, pretrain_dir, device=0):
                 print('Skip loading parameter {}, required shape{}, loaded shape{}.'.format(
                     key, model_state_dict[key].shape, state_dict[key].shape))
                 state_dict[key] = model_state_dict[key]
+            # else:
+            #     print('Matched parameter {}.'.format(key))
         else:
             print('Drop parameter {}.'.format(key))
     for key in model_state_dict.keys():
