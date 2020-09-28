@@ -256,7 +256,7 @@ def main():
         train(epoch)
         if cfg.val_interval > 0 and epoch % cfg.val_interval == 0:
             val_map(epoch)
-            print(saver.save(model.module.state_dict(), 'checkpoint'))
+            print(saver.save(model.module.state_dict(), 'checkpoint_{}'.format(epoch)))
         lr_scheduler.step(epoch)
 
         epoch_time = (time.time() - start) / 3600. / 24.
