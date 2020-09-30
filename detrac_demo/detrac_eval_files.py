@@ -1,6 +1,6 @@
 import os
 import sys
-sys.path.append('/media/keyi/Data/Research/traffic/detection/PointCenterNet_project')
+sys.path.append('/home/keyi/Documents/research/code/PointCenterNet_project')
 import cv2
 import argparse
 import numpy as np
