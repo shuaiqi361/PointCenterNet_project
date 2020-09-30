@@ -8,6 +8,7 @@ sys.path.append(str(current_path.parent))
 import cv2
 import argparse
 import numpy as np
+import time
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
@@ -61,6 +62,7 @@ os.chdir(cfg.root_dir)
 cfg.test_scales = [float(s) for s in cfg.test_scales.split(',')]
 DETRAC_compatible_names = ['car', 'bus', 'truck']
 
+
 def main():
     cfg.device = torch.device('cuda')
     torch.backends.cudnn.benchmark = False
@@ -95,6 +97,7 @@ def main():
     model.eval()
 
     # Loading images
+    speed_list = []
     frame_list = sorted(os.listdir(cfg.img_dir))
     n_frames = len(frame_list)
 
@@ -142,6 +145,7 @@ def main():
 
         with torch.no_grad():
             detections = []
+            start_time = time.time()
             for scale in imgs:
                 imgs[scale]['image'] = imgs[scale]['image'].to(cfg.device)
 
@@ -182,6 +186,7 @@ def main():
 
             # Use opencv functions to output a video
             # output_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+            speed_list.append(time.time() - start_time)
             output_image = original_image
 
             counter = 1
@@ -214,29 +219,10 @@ def main():
 
             cv2.imshow('Frames'.format(frame_id), output_image)
             video_out.write(output_image)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(5) & 0xFF == ord('q'):
                 break
 
-            # Original using plt functions
-            # plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-            # plt.show()
-            # fig = plt.figure(0)
-            # colors = COCO_COLORS if cfg.dataset == 'coco' else DETRAC_COLORS
-            # names = COCO_NAMES if cfg.dataset == 'coco' else DETRAC_NAMES
-            # plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-            # for lab in bbox_and_scores:
-            #     for boxes in bbox_and_scores[lab]:
-            #         x1, y1, x2, y2, score = boxes
-            #         if score > cfg.detect_thres:
-            #             plt.gca().add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1,
-            #                                           linewidth=2, edgecolor=colors[lab], facecolor='none'))
-            #             plt.text(x1 + 3, y1 + 3, names[lab] + '%.2f' % score,
-            #                      bbox=dict(facecolor=colors[lab], alpha=0.5), fontsize=7, color='k')
-            #
-            # fig.patch.set_visible(False)
-            # plt.axis('off')
-            # # plt.savefig('demo_results.png', dpi=300, transparent=True)
-            # plt.show()
+    print('Test frame rate:', 1. / np.mean(speed_list))
 
 
 if __name__ == '__main__':
