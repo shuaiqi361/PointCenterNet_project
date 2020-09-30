@@ -1,6 +1,10 @@
 import os
 import sys
-sys.path.append('/home/keyi/Documents/research/code/PointCenterNet_project')
+from pathlib import Path
+
+current_path = Path(Path(__file__).parent.absolute())
+sys.path.append(str(current_path.parent))
+
 import cv2
 import argparse
 import numpy as np

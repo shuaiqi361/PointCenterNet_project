@@ -37,6 +37,7 @@ parser.add_argument('--root_dir', type=str, default='./')
 parser.add_argument('--img_dir', type=str, default='./data/demo.png')
 parser.add_argument('--ckpt_dir', type=str, default='./ckpt/pascal_resdcn18_512/checkpoint.t7')
 parser.add_argument('--output_video_dir', type=str, default='./demo/video.mkv')
+parser.add_argument('--output_text_dir', type=str, default='./demo/video.txt')
 
 parser.add_argument('--arch', type=str, default='large_hourglass')
 parser.add_argument('--dataset', type=str, default='DETRAC', choices=['coco', 'DETRAC'])
@@ -46,6 +47,9 @@ parser.add_argument('--test_flip', action='store_true')
 parser.add_argument('--test_scales', type=str, default='1')  # 0.5,0.75,1,1.25,1.5
 parser.add_argument('--test_topk', type=int, default=100)
 parser.add_argument('--detect_thres', type=float, default=0.3)
+parser.add_argument('--video_width', type=int, default=960)
+parser.add_argument('--video_height', type=int, default=540)
+parser.add_argument('--video_fps', type=int, default=30)
 parser.add_argument('--detector_name', type=str, default='CenterNet')
 
 parser.add_argument('--name_pattern', type=str, default='img{:04d}.png')
@@ -72,11 +76,12 @@ def main():
 
     # Set up parameters for outputing video
     output_name = 'demo/'
-    width = 1920
-    height = 1080
-    fps = 30  # output video configuration
+    width = cfg.video_width
+    height = cfg.video_height
+    fps = cfg.video_fps  # output video configuration
     video_out = cv2.VideoWriter(cfg.output_video_dir,
                                 cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
+    text_out = open(cfg.output_text_dir, 'w')
 
     print('Creating model and recover from checkpoint ...')
     if 'hourglass' in cfg.arch:
@@ -179,6 +184,7 @@ def main():
             # output_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
             output_image = original_image
 
+            counter = 1
             for lab in bbox_and_scores:
                 if cfg.dataset == 'coco':
                     if names[lab] not in DETRAC_compatible_names:
@@ -197,6 +203,14 @@ def main():
                         cv2.putText(output_image, text, org=(int(text_location[0]), int(text_location[3])),
                                     fontFace=cv2.FONT_HERSHEY_COMPLEX, thickness=1, fontScale=0.3,
                                     color=(0, 0, 255))
+
+                        # add to text file
+                        new_line = '{0},{1},{2:.3f},{3:.3f},{4:.3f},{5:.3f},{6:.4f}\n'.format(str(frame_id + 1),
+                                                                                              counter,
+                                                                                              x1, y1, x2 - x1, y2 - y1,
+                                                                                              score)
+                        counter += 1
+                        text_out.write(new_line)
 
             cv2.imshow('Frames'.format(frame_id), output_image)
             video_out.write(output_image)
