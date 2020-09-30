@@ -1,6 +1,10 @@
 import os
 import sys
-sys.path.append('/media/keyi/Data/Research/traffic/detection/PointCenterNet_project')
+from pathlib import Path
+
+current_path = Path(Path(__file__).parent.absolute())
+sys.path.append(str(current_path.parent))
+
 import cv2
 import argparse
 import numpy as np
@@ -9,19 +13,10 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import seaborn as sns
 
-# sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
-# sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
-# sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'nets'))
-# sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'datasets'))
-
-# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-# os.environ["CUDA_VISIBLE_DEVICES"] = '0'
-
 import torch
 import torch.utils.data
 
 from datasets.coco import COCO_MEAN, COCO_STD, COCO_NAMES
-# from datasets.pascal import VOC_MEAN, VOC_STD, VOC_NAMES
 from datasets.detrac import DETRAC_MEAN, DETRAC_STD, DETRAC_NAMES
 
 from nets.hourglass import exkp
@@ -32,10 +27,7 @@ from utils.post_process import ctdet_decode
 
 from lib.nms.nms import soft_nms
 
-# from nms import soft_nms
-
 COCO_COLORS = sns.color_palette('hls', len(COCO_NAMES))
-# VOC_COLORS = sns.color_palette('hls', len(VOC_NAMES))
 DETRAC_COLORS = sns.color_palette('hls', len(DETRAC_NAMES))
 
 # Training settings
@@ -195,7 +187,7 @@ def main():
                     x1, y1, x2, y2, score = boxes
                     if score > cfg.detect_thres:
                         text = names[lab] + '%.2f' % score
-                        label_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_COMPLEX, 0.5, 1)
+                        label_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_COMPLEX, 0.3, 1)
                         text_location = [x1 + 2, y1 + 2,
                                          x1 + 2 + label_size[0][0],
                                          y1 + 2 + label_size[0][1]]
@@ -203,7 +195,7 @@ def main():
                                       pt2=(int(x2), int(y2)),
                                       color=colors[lab], thickness=2)
                         cv2.putText(output_image, text, org=(int(text_location[0]), int(text_location[3])),
-                                    fontFace=cv2.FONT_HERSHEY_COMPLEX, thickness=1, fontScale=0.5,
+                                    fontFace=cv2.FONT_HERSHEY_COMPLEX, thickness=1, fontScale=0.3,
                                     color=(0, 0, 255))
 
             cv2.imshow('Frames'.format(frame_id), output_image)
