@@ -45,6 +45,7 @@ parser.add_argument('--detect_thres', type=float, default=0.3)
 parser.add_argument('--video_width', type=int, default=960)
 parser.add_argument('--video_height', type=int, default=540)
 parser.add_argument('--video_fps', type=int, default=30)
+parser.add_argument('--detector_name', type=str, default='CenterNet')
 
 parser.add_argument('--name_pattern', type=str, default='img{:04d}.png')
 
@@ -92,7 +93,7 @@ def main():
         video_out = cv2.VideoWriter(os.path.join(cfg.output_dir, video_clips_list[i] + '.mkv'),
                                     cv2.VideoWriter_fourcc('D', 'I', 'V', 'X'), fps, (width, height))
 
-        text_out = open(os.path.join(cfg.output_dir, video_clips_list[i] + '_Det.txt'), 'w')
+        text_out = open(os.path.join(cfg.output_dir, video_clips_list[i] + '_Det_{}.txt'.format(cfg.detector_name)), 'w')
 
         print('Evaluating on video {}: {}/{} ...'.format(video_clips_list[i], i + 1, n_videos))
         video_folder = os.path.join(cfg.img_dir, video_clips_list[i])

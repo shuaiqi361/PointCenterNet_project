@@ -54,6 +54,7 @@ parser.add_argument('--test_flip', action='store_true')
 parser.add_argument('--test_scales', type=str, default='1')  # 0.5,0.75,1,1.25,1.5
 parser.add_argument('--test_topk', type=int, default=100)
 parser.add_argument('--detect_thres', type=float, default=0.3)
+parser.add_argument('--detector_name', type=str, default='CenterNet')
 
 parser.add_argument('--name_pattern', type=str, default='img{:04d}.png')
 
@@ -62,7 +63,7 @@ cfg = parser.parse_args()
 os.chdir(cfg.root_dir)
 
 cfg.test_scales = [float(s) for s in cfg.test_scales.split(',')]
-
+DETRAC_compatible_names = ['car', 'bus', 'truck']
 
 def main():
     cfg.device = torch.device('cuda')
@@ -187,6 +188,9 @@ def main():
             output_image = original_image
 
             for lab in bbox_and_scores:
+                if cfg.dataset == 'coco':
+                    if names[lab] not in DETRAC_compatible_names:
+                        continue
                 for boxes in bbox_and_scores[lab]:
                     x1, y1, x2, y2, score = boxes
                     if score > cfg.detect_thres:
