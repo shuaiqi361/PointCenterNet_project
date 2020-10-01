@@ -202,9 +202,12 @@ def main():
                         text_location = [x1 + 2, y1 + 2,
                                          x1 + 2 + label_size[0][0],
                                          y1 + 2 + label_size[0][1]]
+                        # cv2.rectangle(output_image, pt1=(int(x1), int(y1)),
+                        #               pt2=(int(x2), int(y2)),
+                        #               color=colors[lab], thickness=2)
                         cv2.rectangle(output_image, pt1=(int(x1), int(y1)),
                                       pt2=(int(x2), int(y2)),
-                                      color=colors[lab], thickness=2)
+                                      color=(0, 255, 0), thickness=2)
                         cv2.putText(output_image, text, org=(int(text_location[0]), int(text_location[3])),
                                     fontFace=cv2.FONT_HERSHEY_COMPLEX, thickness=1, fontScale=0.3,
                                     color=(0, 0, 255))

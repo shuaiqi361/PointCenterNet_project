@@ -57,8 +57,8 @@ class DETRAC(data.Dataset):
         self.down_ratio = 4
         self.img_size = {'h': img_size, 'w': img_size}
         self.fmap_size = {'h': img_size // self.down_ratio, 'w': img_size // self.down_ratio}
-        self.rand_scales = np.arange(0.7, 1.3, 0.1)
-        self.gaussian_iou = 0.7
+        self.rand_scales = np.arange(0.5, 1.5, 0.05)
+        self.gaussian_iou = 0.6
 
         print('==> initializing UA-DETRAC %s data.' % split)
         # self.coco = coco.COCO(self.annot_path)
