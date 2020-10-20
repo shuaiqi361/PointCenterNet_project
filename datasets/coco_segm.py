@@ -53,7 +53,7 @@ def encode_mask(mask):
 
 
 class COCOSEGM(data.Dataset):
-    def __init__(self, data_dir, annotation_file, shape_file, dictionary_file, split, split_ratio=1.0, img_size=512):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=512):
         super(COCOSEGM, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
@@ -67,8 +67,8 @@ class COCOSEGM(data.Dataset):
         self.std = np.array(COCO_STD, dtype=np.float32)[None, None, :]
 
         self.split = split
-        self.annotation_file = annotation_file
-        self.shape_file = shape_file
+        # self.annotation_file = annotation_file
+        # self.shape_file = shape_file
         self.dictionary_file = dictionary_file
         self.data_dir = data_dir
         self.img_dir = os.path.join(self.data_dir, 'images/%s2017' % split)
@@ -93,10 +93,10 @@ class COCOSEGM(data.Dataset):
         self.coco = coco.COCO(self.annot_path)
         self.images = self.coco.getImgIds()
         self.dictionary = np.load(self.dictionary_file)  # ndarray, shape (n_coeffs, n_vertices * 2)
-        with open(self.annotation_file, 'r') as f_annt:
-            self.all_annotations = json.load(f_annt)
-        with open(self.shape_file, 'r') as f_shape:
-            self.all_shapes = json.load(f_shape)
+        # with open(self.annotation_file, 'r') as f_annt:
+        #     self.all_annotations = json.load(f_annt)
+        # with open(self.shape_file, 'r') as f_shape:
+        #     self.all_shapes = json.load(f_shape)
 
         if 0 < split_ratio < 1:
             split_size = int(np.clip(split_ratio * len(self.images), 1, len(self.images)))
@@ -244,8 +244,8 @@ class COCOSEGM(data.Dataset):
 
 
 class COCO_eval_segm(COCOSEGM):
-    def __init__(self, data_dir, split, test_scales=(1,), test_flip=False, fix_size=False):
-        super(COCO_eval_segm, self).__init__(data_dir, split)
+    def __init__(self, data_dir, annotation_file, shape_file, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False):
+        super(COCO_eval_segm, self).__init__(data_dir, annotation_file, shape_file, dictionary_file, split)
         self.test_flip = test_flip
         self.test_scales = test_scales
         self.fix_size = fix_size

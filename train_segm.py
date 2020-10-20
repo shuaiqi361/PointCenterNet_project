@@ -54,7 +54,7 @@ parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
 
 parser.add_argument('--lr', type=float, default=5e-4)
-parser.add_argument('--lr_step', type=str, default='80,120')
+parser.add_argument('--lr_step', type=str, default='90,120')
 parser.add_argument('--batch_size', type=int, default=48)
 parser.add_argument('--num_epochs', type=int, default=140)
 
@@ -100,7 +100,8 @@ def main():
     print('Setting up data...')
     dictionary = np.load(cfg.dictionary_file)
     Dataset = COCOSEGM if cfg.dataset == 'coco' else PascalVOC
-    train_dataset = Dataset(cfg.data_dir, 'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size)
+    train_dataset = Dataset(cfg.data_dir, cfg.annotation_file, cfg.shape_file, cfg.dictionary_file,
+                            'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,
                                                                     num_replicas=num_gpus,
                                                                     rank=cfg.local_rank)
@@ -114,7 +115,8 @@ def main():
                                                sampler=train_sampler if cfg.dist else None)
 
     Dataset_eval = COCO_eval_segm if cfg.dataset == 'coco' else PascalVOC_eval
-    val_dataset = Dataset_eval(cfg.data_dir, 'val', test_scales=[1.], test_flip=False)
+    val_dataset = Dataset_eval(cfg.data_dir, cfg.annotation_file, cfg.shape_file, cfg.dictionary_file,
+                               'val', test_scales=[1.], test_flip=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
                                              shuffle=False, num_workers=1, pin_memory=True,
                                              collate_fn=val_dataset.collate_fn)
@@ -241,7 +243,7 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if cfg.val_interval > 0 and epoch % cfg.val_interval == 0:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
             val_map(epoch)
             print(saver.save(model.module.state_dict(), 'checkpoint'))
         lr_scheduler.step(epoch)  # move to here after pytorch1.1.0
