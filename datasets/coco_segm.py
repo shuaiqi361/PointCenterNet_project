@@ -15,7 +15,6 @@ from utils.image import get_border, get_affine_transform, affine_transform, colo
 from utils.image import draw_umich_gaussian, gaussian_radius
 from utils.sparse_coding import fast_ista, check_clockwise_polygon
 
-
 COCO_NAMES = ['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
               'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
               'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
@@ -121,9 +120,6 @@ class COCOSEGM(data.Dataset):
         for anno in annotations:
             if anno['iscrowd'] == 1:  # Excludes crowd objects
                 continue
-            else:
-                labels.append(self.cat_ids[anno['category_id']])
-                bboxes.append(anno['bbox'])
 
             polygons = anno['segmentation'][0]
             gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
@@ -132,24 +128,16 @@ class COCOSEGM(data.Dataset):
             # Downsample the contour to fix number of vertices
             fixed_contour = resample(contour, num=self.n_vertices)
 
-            # Indexing from the left-most vertex, argmin x-axis
-            idx = np.argmin(fixed_contour[:, 0])
-            indexed_shape = np.concatenate((fixed_contour[idx:, :], fixed_contour[:idx, :]), axis=0)
-
-            clockwise_flag = check_clockwise_polygon(indexed_shape)
-            if not clockwise_flag:
-                fixed_contour = np.flip(indexed_shape, axis=0)
-            else:
-                fixed_contour = indexed_shape.copy()
-
             fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
             fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
-            contour_mean = np.mean(fixed_contour, axis=0)
+            # contour_mean = np.mean(fixed_contour, axis=0)
             contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
             if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
                 continue
 
-            shapes.append(fixed_contour)
+            shapes.append(np.ndarray.flatten(fixed_contour).tolist())
+            labels.append(self.cat_ids[anno['category_id']])
+            bboxes.append(anno['bbox'])
 
         labels = np.array(labels)
         bboxes = np.array(bboxes, dtype=np.float32)
@@ -191,11 +179,10 @@ class COCOSEGM(data.Dataset):
             center[0] = np.random.randint(low=w_border, high=width - w_border)
             center[1] = np.random.randint(low=h_border, high=height - h_border)
 
-            # No horizontal flipping for now
-            # if np.random.random() < 0.5:
-            #     flipped = True
-            #     img = img[:, ::-1, :]
-            #     center[0] = width - center[0] - 1
+            if np.random.random() < 0.5:
+                flipped = True
+                img = img[:, ::-1, :]
+                center[0] = width - center[0] - 1
 
         trans_img = get_affine_transform(center, scale, 0, [self.img_size['w'], self.img_size['h']])
         img = cv2.warpAffine(img, trans_img, (self.img_size['w'], self.img_size['h']))
@@ -237,8 +224,12 @@ class COCOSEGM(data.Dataset):
 
         # detections = []
         for k, (bbox, label, shape) in enumerate(zip(bboxes, labels, shapes)):
-            # if flipped:
-            #     bbox[[0, 2]] = width - bbox[[2, 0]] - 1
+            if flipped:
+                bbox[[0, 2]] = width - bbox[[2, 0]] - 1
+                # Flip the contour
+                for m in range(self.n_vertices):
+                    shape[2 * m] = width - shape[2 * m] - 1
+
             bbox[:2] = affine_transform(bbox[:2], trans_fmap)
             bbox[2:] = affine_transform(bbox[2:], trans_fmap)
             bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.fmap_size['w'] - 1)
@@ -250,14 +241,27 @@ class COCOSEGM(data.Dataset):
                 shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_fmap)
 
             contour = np.reshape(shape, (self.n_vertices, 2))
-            contour[:, 0] = np.clip(contour[:, 0], 0, self.fmap_size['w'] - 1)
-            contour[:, 1] = np.clip(contour[:, 1], 0, self.fmap_size['h'] - 1)
+            # Indexing from the left-most vertex, argmin x-axis
+            idx = np.argmin(contour[:, 0])
+            indexed_shape = np.concatenate((contour[idx:, :], contour[:idx, :]), axis=0)
+
+            clockwise_flag = check_clockwise_polygon(indexed_shape)
+            if not clockwise_flag:
+                fixed_contour = np.flip(indexed_shape, axis=0)
+            else:
+                fixed_contour = indexed_shape.copy()
+
+            contour[:, 0] = np.clip(fixed_contour[:, 0], 0, self.fmap_size['w'] - 1)
+            contour[:, 1] = np.clip(fixed_contour[:, 1], 0, self.fmap_size['h'] - 1)
 
             contour_mean = np.mean(contour, axis=0)
             contour_std = np.std(contour, axis=0)
-            norm_shape = (shape - contour_mean) / np.sqrt(np.sum(contour_std ** 2))
+            if np.sqrt(np.sum(contour_std ** 2)) <= 1e-6:
+                norm_shape = (contour - contour_mean)
+            else:
+                norm_shape = (contour - contour_mean) / np.sqrt(np.sum(contour_std ** 2))
 
-            if h > 0 and w > 0:
+            if h > 0 and w > 0 and np.sqrt(np.sum(contour_std ** 2)) > 1e-6:
                 obj_c = contour_mean
                 obj_c_int = obj_c.astype(np.int32)
 
@@ -265,7 +269,7 @@ class COCOSEGM(data.Dataset):
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 w_h_std[k] = contour_std
                 codes_[k], _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
-                                      lmbda=self.sparse_alpha, max_iter=150)
+                                         lmbda=self.sparse_alpha, max_iter=60)
                 # w_h_[k] = 1. * w, 1. * h
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
@@ -297,8 +301,8 @@ class COCOSEGM(data.Dataset):
 
 
 class COCO_eval_segm(COCOSEGM):
-    def __init__(self, data_dir, annotation_file, shape_file, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False):
-        super(COCO_eval_segm, self).__init__(data_dir, annotation_file, shape_file, dictionary_file, split)
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False):
+        super(COCO_eval_segm, self).__init__(data_dir, dictionary_file, split)
         self.test_flip = test_flip
         self.test_scales = test_scales
         self.fix_size = fix_size

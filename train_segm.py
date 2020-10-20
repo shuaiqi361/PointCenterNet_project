@@ -42,8 +42,6 @@ parser.add_argument('--data_dir', type=str, default='./data')
 parser.add_argument('--log_name', type=str, default='test')
 parser.add_argument('--pretrain_checkpoint', type=str)
 parser.add_argument('--dictionary_file', type=str)
-parser.add_argument('--annotation_file', type=str)
-parser.add_argument('--shape_file', type=str)
 
 parser.add_argument('--dataset', type=str, default='coco', choices=['coco', 'pascal'])
 parser.add_argument('--arch', type=str, default='large_hourglass')
@@ -100,7 +98,7 @@ def main():
     print('Setting up data...')
     dictionary = np.load(cfg.dictionary_file)
     Dataset = COCOSEGM if cfg.dataset == 'coco' else PascalVOC
-    train_dataset = Dataset(cfg.data_dir, cfg.annotation_file, cfg.shape_file, cfg.dictionary_file,
+    train_dataset = Dataset(cfg.data_dir, cfg.dictionary_file,
                             'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,
                                                                     num_replicas=num_gpus,
@@ -115,10 +113,10 @@ def main():
                                                sampler=train_sampler if cfg.dist else None)
 
     Dataset_eval = COCO_eval_segm if cfg.dataset == 'coco' else PascalVOC_eval
-    val_dataset = Dataset_eval(cfg.data_dir, cfg.annotation_file, cfg.shape_file, cfg.dictionary_file,
+    val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
                                'val', test_scales=[1.], test_flip=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
-                                             shuffle=False, num_workers=1, pin_memory=True,
+                                             shuffle=False, num_workers=1, pin_memory=False,
                                              collate_fn=val_dataset.collate_fn)
 
     print('Creating model...')
@@ -162,8 +160,8 @@ def main():
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
-            w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
-            codes_loss = _reg_loss(codes_, batch['w_h_'], batch['ind_masks'])
+            w_h_loss = _reg_loss(w_h_, batch['w_h_std'], batch['ind_masks'])
+            codes_loss = _reg_loss(codes_, batch['codes'], batch['ind_masks'])
             loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + 1.0 * codes_loss
 
             optimizer.zero_grad()
@@ -174,14 +172,15 @@ def main():
                 duration = time.perf_counter() - tic
                 tic = time.perf_counter()
                 print('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
-                      ' hmap_loss= %.5f reg_loss= %.5f w_h_loss= %.5f' %
-                      (hmap_loss.item(), reg_loss.item(), w_h_loss.item()) +
+                      ' hmap_loss= %.3f reg_loss= %.3f w_h_std_loss= %.3f  code_loss= %.3f' %
+                      (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item()) +
                       ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
 
                 step = len(train_loader) * epoch + batch_idx
                 summary_writer.add_scalar('hmap_loss', hmap_loss.item(), step)
                 summary_writer.add_scalar('reg_loss', reg_loss.item(), step)
-                summary_writer.add_scalar('w_h_loss', w_h_loss.item(), step)
+                summary_writer.add_scalar('w_h_std_loss', w_h_loss.item(), step)
+                summary_writer.add_scalar('code_loss', codes_loss.item(), step)
         return
 
     def val_map(epoch):
@@ -201,15 +200,16 @@ def main():
                     inputs[scale]['image'] = inputs[scale]['image'].to(cfg.device)
                     output = model(inputs[scale]['image'])[-1]
 
-                    segms = ctsegm_decode(*output, torch.from_numpy(dictionary), K=cfg.test_topk)
+                    segms = ctsegm_decode(*output, torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
+                                          K=cfg.test_topk)
                     segms = segms.detach().cpu().numpy().reshape(1, -1, segms.shape[2])[0]
 
                     top_preds = {}
-                    for j in range(cfg.n_codes):
+                    for j in range(cfg.n_vertices):
                         segms[:, 2 * j:2 * j + 2] = transform_preds(segms[:, 2 * j:2 * j + 2],
-                                                       inputs[scale]['center'],
-                                                       inputs[scale]['scale'],
-                                                       (inputs[scale]['fmap_w'], inputs[scale]['fmap_h']))
+                                                                    inputs[scale]['center'],
+                                                                    inputs[scale]['scale'],
+                                                                    (inputs[scale]['fmap_w'], inputs[scale]['fmap_h']))
 
                     clses = segms[:, -1]
                     for j in range(val_dataset.num_classes):
@@ -221,7 +221,7 @@ def main():
 
                 end_image_time = time.time()
                 segms_and_scores = {j: np.concatenate([d[j] for d in segmentations], axis=0)
-                                   for j in range(1, val_dataset.num_classes + 1)}
+                                    for j in range(1, val_dataset.num_classes + 1)}
                 scores = np.hstack([segms_and_scores[j][:, 4] for j in range(1, val_dataset.num_classes + 1)])
                 if len(scores) > max_per_image:
                     kth = len(scores) - max_per_image
@@ -243,7 +243,7 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
             val_map(epoch)
             print(saver.save(model.module.state_dict(), 'checkpoint'))
         lr_scheduler.step(epoch)  # move to here after pytorch1.1.0

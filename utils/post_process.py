@@ -87,7 +87,7 @@ def ctsegm_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
 
     w_h_ = _tranpose_and_gather_feature(w_h_, inds)
     w_h_ = w_h_.view(batch, K, 2)
-    std_ = torch.sqrt(torch.sum(w_h_ ** 2., dim=2))
+    std_ = torch.sqrt(torch.sum(w_h_ ** 2., dim=2, keepdim=True))
 
     codes_ = _tranpose_and_gather_feature(codes_, inds)
     codes_ = codes_.view(batch, K, 64)
@@ -96,6 +96,7 @@ def ctsegm_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
     scores = scores.view(batch, K, 1)
 
     segms = torch.matmul(codes_, dictionary)
+    # print('Sizes:', segms.size(), std_.size(), xs.size())
     segms = (segms * std_).view(batch, K, 32, 2) + torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)
     segmentations = torch.cat([segms.view(batch, K, -1), scores, clses], dim=2)
 
