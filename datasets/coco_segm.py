@@ -9,10 +9,12 @@ import torch.utils.data as data
 import pycocotools.coco as coco
 from pycocotools.cocoeval import COCOeval
 from pycocotools import mask as cocomask
+from scipy.signal import resample
 
 from utils.image import get_border, get_affine_transform, affine_transform, color_aug
 from utils.image import draw_umich_gaussian, gaussian_radius
-from utils.sparse_coding import fast_ista
+from utils.sparse_coding import fast_ista, check_clockwise_polygon
+
 
 COCO_NAMES = ['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
               'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
@@ -109,23 +111,72 @@ class COCOSEGM(data.Dataset):
     def __getitem__(self, index):
         img_id = self.images[index]
         img_path = os.path.join(self.img_dir, self.coco.loadImgs(ids=[img_id])[0]['file_name'])
+        ann_ids = self.coco.getAnnIds(imgIds=[img_id])
+        annotations = self.coco.loadAnns(ids=ann_ids)
 
-        if img_id in self.all_annotations.keys():
-            annotations = self.all_annotations[img_id]
-            shape_annots = self.all_shapes[img_id]
-            labels = annotations['cat_id']
-            bboxes = annotations['bbox']  # xyxy format
-            shapes = shape_annots['shape']  # polygonal vertices format xyxyxyxyxy...
-            codes = annotations['codes']
-            labels = np.array(labels)
-            bboxes = np.array(bboxes, dtype=np.float32)
-            codes = np.array(codes, dtype=np.float32)
-            shapes = np.array(shapes, dtype=np.float32)
-        else:
+        labels = []
+        bboxes = []
+        shapes = []
+
+        for anno in annotations:
+            if anno['iscrowd'] == 1:  # Excludes crowd objects
+                continue
+            else:
+                labels.append(self.cat_ids[anno['category_id']])
+                bboxes.append(anno['bbox'])
+
+            polygons = anno['segmentation'][0]
+            gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
+            contour = np.array(polygons).reshape((-1, 2))
+
+            # Downsample the contour to fix number of vertices
+            fixed_contour = resample(contour, num=self.n_vertices)
+
+            # Indexing from the left-most vertex, argmin x-axis
+            idx = np.argmin(fixed_contour[:, 0])
+            indexed_shape = np.concatenate((fixed_contour[idx:, :], fixed_contour[:idx, :]), axis=0)
+
+            clockwise_flag = check_clockwise_polygon(indexed_shape)
+            if not clockwise_flag:
+                fixed_contour = np.flip(indexed_shape, axis=0)
+            else:
+                fixed_contour = indexed_shape.copy()
+
+            fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
+            fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
+            contour_mean = np.mean(fixed_contour, axis=0)
+            contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
+            if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
+                continue
+
+            shapes.append(fixed_contour)
+
+        labels = np.array(labels)
+        bboxes = np.array(bboxes, dtype=np.float32)
+        shapes = np.array(shapes, dtype=np.float32)
+
+        if len(bboxes) == 0:
             bboxes = np.array([[0., 0., 0., 0.]], dtype=np.float32)
             labels = np.array([[0]])
-            codes = np.zeros(shape=(1, self.n_codes), dtype=np.float32)
-            shapes = np.zeros(shape=(1, self.n_vertices * 2), dtype=np.float32)
+            shapes = np.zeros((1, self.n_vertices * 2), dtype=np.float32)
+        bboxes[:, 2:] += bboxes[:, :2]  # xywh to xyxy
+
+        # if img_id in self.all_annotations.keys():
+        #     annotations = self.all_annotations[img_id]
+        #     shape_annots = self.all_shapes[img_id]
+        #     labels = annotations['cat_id']
+        #     bboxes = annotations['bbox']  # xyxy format
+        #     shapes = shape_annots['shape']  # polygonal vertices format xyxyxyxyxy...
+        #     codes = annotations['codes']
+        #     labels = np.array(labels)
+        #     bboxes = np.array(bboxes, dtype=np.float32)
+        #     codes = np.array(codes, dtype=np.float32)
+        #     shapes = np.array(shapes, dtype=np.float32)
+        # else:
+        #     bboxes = np.array([[0., 0., 0., 0.]], dtype=np.float32)
+        #     labels = np.array([[0]])
+        #     codes = np.zeros(shape=(1, self.n_codes), dtype=np.float32)
+        #     shapes = np.zeros(shape=(1, self.n_vertices * 2), dtype=np.float32)
 
         img = cv2.imread(img_path)
         height, width = img.shape[0], img.shape[1]
@@ -185,7 +236,7 @@ class COCOSEGM(data.Dataset):
         ind_masks = np.zeros((self.max_objs,), dtype=np.uint8)
 
         # detections = []
-        for k, (bbox, label, shape, code) in enumerate(zip(bboxes, labels, shapes, codes)):
+        for k, (bbox, label, shape) in enumerate(zip(bboxes, labels, shapes)):
             # if flipped:
             #     bbox[[0, 2]] = width - bbox[[2, 0]] - 1
             bbox[:2] = affine_transform(bbox[:2], trans_fmap)
@@ -204,6 +255,7 @@ class COCOSEGM(data.Dataset):
 
             contour_mean = np.mean(contour, axis=0)
             contour_std = np.std(contour, axis=0)
+            norm_shape = (shape - contour_mean) / np.sqrt(np.sum(contour_std ** 2))
 
             if h > 0 and w > 0:
                 obj_c = contour_mean
@@ -211,8 +263,9 @@ class COCOSEGM(data.Dataset):
 
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
-                w_h_std = contour_std
-                codes_ = code
+                w_h_std[k] = contour_std
+                codes_[k], _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
+                                      lmbda=self.sparse_alpha, max_iter=150)
                 # w_h_[k] = 1. * w, 1. * h
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]

@@ -8,6 +8,28 @@ from sklearn.utils.extmath import randomized_svd, row_norms
 from sklearn.utils import check_array, check_random_state, gen_even_slices, gen_batches, shuffle
 
 
+def check_clockwise_polygon(polygon):
+    """
+    sum over edges: sum (x2 − x1)(y2 + y1)
+    :param polygon:
+    :return:
+    """
+    n_vertices = polygon.shape[0]
+    sum_edges = 0
+    for i in range(n_vertices):
+        x1 = polygon[i % n_vertices, 0]
+        y1 = polygon[i % n_vertices, 1]
+        x2 = polygon[(i + 1) % n_vertices, 0]
+        y2 = polygon[(i + 1) % n_vertices, 1]
+
+        sum_edges += (x2 - x1) * (y2 + y1)
+
+    if sum_edges > 0:
+        return True
+    else:
+        return False
+
+
 def soft_thresholding(x, lm):
     return np.sign(x) * np.maximum(np.abs(x) - lm, 0.)
 
@@ -203,4 +225,3 @@ def iterative_dict_learning_fista(shapes, n_components, dict_init=None, alpha=0.
     print('Final Reconstruction error(frobenius norm): ', error)
 
     return dictionary, learned_codes, losses, error
-
