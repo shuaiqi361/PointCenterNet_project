@@ -162,7 +162,7 @@ def main():
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_std'], batch['ind_masks'])
             codes_loss = _reg_loss(codes_, batch['codes'], batch['ind_masks'])
-            loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + 1.0 * codes_loss
+            loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + 5.0 * codes_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -214,20 +214,20 @@ def main():
                     clses = segms[:, -1]
                     for j in range(val_dataset.num_classes):
                         inds = (clses == j)
-                        top_preds[j + 1] = segms[inds, :5].astype(np.float32)
-                        top_preds[j + 1][:, :4] /= scale
+                        top_preds[j + 1] = segms[inds, :cfg.n_vertices * 2 + 1].astype(np.float32)
+                        top_preds[j + 1][:, :cfg.n_vertices * 2] /= scale
 
                     segmentations.append(top_preds)
 
                 end_image_time = time.time()
                 segms_and_scores = {j: np.concatenate([d[j] for d in segmentations], axis=0)
                                     for j in range(1, val_dataset.num_classes + 1)}
-                scores = np.hstack([segms_and_scores[j][:, 4] for j in range(1, val_dataset.num_classes + 1)])
+                scores = np.hstack([segms_and_scores[j][:, cfg.n_vertices * 2] for j in range(1, val_dataset.num_classes + 1)])
                 if len(scores) > max_per_image:
                     kth = len(scores) - max_per_image
                     thresh = np.partition(scores, kth)[kth]
                     for j in range(1, val_dataset.num_classes + 1):
-                        keep_inds = (segms_and_scores[j][:, 4] >= thresh)
+                        keep_inds = (segms_and_scores[j][:, cfg.n_vertices * 2] >= thresh)
                         segms_and_scores[j] = segms_and_scores[j][keep_inds]
 
                 results[img_id] = segms_and_scores
