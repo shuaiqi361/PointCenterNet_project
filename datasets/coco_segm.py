@@ -332,6 +332,7 @@ class COCO_eval_segm(COCOSEGM):
             img = cv2.resize(image, (new_width, new_height))
             trans_img = get_affine_transform(center, scaled_size, 0, [img_width, img_height])
             img = cv2.warpAffine(img, trans_img, (img_width, img_height))
+            self.w, self.h = img_width, img_height
 
             img = img.astype(np.float32) / 255.
             img -= self.mean
@@ -353,13 +354,13 @@ class COCO_eval_segm(COCOSEGM):
         # all_bboxes: num_samples x num_classes x 5
         segments = []
         for image_id in all_segments:
-            img = self.coco.loadImgs(image_id)[0]
-            w_img, h_img = int(img['width']), int(img['height'])
+            # img = self.coco.loadImgs(image_id)[0]
+            # w_img, h_img = int(img['width']), int(img['height'])
             for cls_ind in all_segments[image_id]:
                 category_id = self.valid_ids[cls_ind - 1]
                 for segm in all_segments[image_id][cls_ind]:  # decode the segments to RLE
                     poly = segm.tolist()
-                    rles = cocomask.frPyObjects([poly], h_img, w_img)
+                    rles = cocomask.frPyObjects([poly], self.h, self.w)
                     rle = cocomask.merge(rles)
                     m = cocomask.decode(rle)
                     rle_new = encode_mask(m.astype(np.uint8))
@@ -368,7 +369,7 @@ class COCO_eval_segm(COCOSEGM):
                     detection = {"image_id": int(image_id),
                                  "category_id": int(category_id),
                                  'segmentation': rle_new,
-                                 "score": float("{:.2f}".format(score))}
+                                 "score": float("{:.3f}".format(score))}
                     segments.append(detection)
         return segments
 
