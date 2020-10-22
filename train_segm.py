@@ -31,7 +31,7 @@ from utils.summary import create_summary, create_logger, create_saver, DisablePr
 from utils.post_process import ctsegm_decode
 
 # Training settings
-parser = argparse.ArgumentParser(description='simple_centernet45')
+parser = argparse.ArgumentParser(description='simple_centernet_segm')
 
 parser.add_argument('--local_rank', type=int, default=0)
 parser.add_argument('--device_id', type=int, default=0)  # specify device id for single GPU training
@@ -50,6 +50,7 @@ parser.add_argument('--img_size', type=int, default=512)
 parser.add_argument('--split_ratio', type=float, default=1.0)
 parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
+parser.add_argument('--code_loss_weight', type=float, default=1.0)
 
 parser.add_argument('--lr', type=float, default=5e-4)
 parser.add_argument('--lr_step', type=str, default='90,120')
@@ -162,7 +163,7 @@ def main():
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_std'], batch['ind_masks'])
             codes_loss = _reg_loss(codes_, batch['codes'], batch['ind_masks'])
-            loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + 5.0 * codes_loss
+            loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -190,6 +191,7 @@ def main():
         max_per_image = 100
 
         results = {}
+        input_scales = {}
         speed_list = []
         with torch.no_grad():
             for inputs in val_loader:
@@ -198,6 +200,10 @@ def main():
                 segmentations = []
                 for scale in inputs:
                     inputs[scale]['image'] = inputs[scale]['image'].to(cfg.device)
+                    if scale == 1. and img_id not in input_scales.keys():  # keep track of the input image Sizes
+                        _, _, input_h, input_w = inputs[scale]['image'].shape
+                        input_scales[img_id] = {'h': input_h, 'w': input_w}
+
                     output = model(inputs[scale]['image'])[-1]
 
                     segms = ctsegm_decode(*output, torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
@@ -233,7 +239,7 @@ def main():
                 results[img_id] = segms_and_scores
                 speed_list.append(end_image_time - start_image_time)
 
-        eval_results = val_dataset.run_eval(results, save_dir=cfg.ckpt_dir)
+        eval_results = val_dataset.run_eval(results, input_scales, ave_dir=cfg.ckpt_dir)
         print(eval_results)
         summary_writer.add_scalar('val_mAP/mAP', eval_results[0], epoch)
         print('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))

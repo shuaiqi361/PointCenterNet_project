@@ -332,7 +332,6 @@ class COCO_eval_segm(COCOSEGM):
             img = cv2.resize(image, (new_width, new_height))
             trans_img = get_affine_transform(center, scaled_size, 0, [img_width, img_height])
             img = cv2.warpAffine(img, trans_img, (img_width, img_height))
-            self.w, self.h = img_width, img_height
 
             img = img.astype(np.float32) / 255.
             img -= self.mean
@@ -350,7 +349,7 @@ class COCO_eval_segm(COCOSEGM):
 
         return img_id, out
 
-    def convert_eval_format(self, all_segments):
+    def convert_eval_format(self, all_segments, input_scales):
         # all_bboxes: num_samples x num_classes x 5
         segments = []
         for image_id in all_segments:
@@ -360,7 +359,7 @@ class COCO_eval_segm(COCOSEGM):
                 category_id = self.valid_ids[cls_ind - 1]
                 for segm in all_segments[image_id][cls_ind]:  # decode the segments to RLE
                     poly = segm.tolist()
-                    rles = cocomask.frPyObjects([poly], self.h, self.w)
+                    rles = cocomask.frPyObjects([poly], input_scales[image_id]['h'], input_scales[image_id]['w'])
                     rle = cocomask.merge(rles)
                     m = cocomask.decode(rle)
                     rle_new = encode_mask(m.astype(np.uint8))
@@ -373,8 +372,8 @@ class COCO_eval_segm(COCOSEGM):
                     segments.append(detection)
         return segments
 
-    def run_eval(self, results, save_dir=None):
-        segments = self.convert_eval_format(results)
+    def run_eval(self, results, input_scales, save_dir=None):
+        segments = self.convert_eval_format(results, input_scales)
 
         if save_dir is not None:
             result_json = os.path.join(save_dir, "segm_results.json")
