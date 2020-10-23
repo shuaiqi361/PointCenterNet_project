@@ -196,16 +196,18 @@ def main():
             # print('generate coco results for server eval ...')
             for lab in segms_and_scores:
                 for res in segms_and_scores[lab]:
-                    contour, score = res[:-1], res[-1]
+                    poly, score = res[:-1], res[-1]
+                    recon_contour = poly.reshape((-1, 2))
+                    recon_contour[:, 0] = np.clip(recon_contour[:, 0], 0, img_width - 1)
+                    recon_contour[:, 1] = np.clip(recon_contour[:, 1], 0, img_height - 1)
                     category_id = int(COCO_IDS[lab - 1])
                     if score > cfg.detect_thres:
-                        recon_contour = contour.reshape((-1, 2))
-                        x1, y1, x2, y2 = min(recon_contour[:, 0]), min(recon_contour[:, 1]), \
-                                         max(recon_contour[:, 0]), max(recon_contour[:, 1])
+                        x1, y1, x2, y2 = int(min(recon_contour[:, 0])), int(min(recon_contour[:, 1])), \
+                                         int(max(recon_contour[:, 0])), int(max(recon_contour[:, 1]))
                         bbox = [x1, y1, x2 - x1, y2 - y1]
                         det = {
                             'image_id': int(img_id),
-                            'category_id': category_id,
+                            'category_id': int(category_id),
                             'score': float("{:.2f}".format(score)),
                             'bbox': bbox
                         }
@@ -220,7 +222,7 @@ def main():
 
                         seg = {
                             'image_id': int(img_id),
-                            'category_id': category_id,
+                            'category_id': int(category_id),
                             'score': float("{:.2f}".format(score)),
                             'segmentation': rle_new
                         }
