@@ -358,9 +358,12 @@ class COCO_eval_segm(COCOSEGM):
             for cls_ind in all_segments[image_id]:
                 category_id = self.valid_ids[cls_ind - 1]
                 for segm in all_segments[image_id][cls_ind]:  # decode the segments to RLE
-                    poly = segm[:-1].tolist()
-                    print('Check length of each segm: ', len(poly))
-                    exit()
+                    poly = segm[:-1].reshape((-1, 2))
+                    poly[:, 0] = np.clip(poly[:, 0], 0, input_scales[image_id]['w'] - 1)
+                    poly[:, 1] = np.clip(poly[:, 1], 0, input_scales[image_id]['h'] - 1)
+                    poly = np.ndarray.flatten(poly).tolist()
+                    # print('Check length of each segm: ', len(poly))
+
                     rles = cocomask.frPyObjects([poly], input_scales[image_id]['h'], input_scales[image_id]['w'])
                     rle = cocomask.merge(rles)
                     m = cocomask.decode(rle)
@@ -370,7 +373,7 @@ class COCO_eval_segm(COCOSEGM):
                     detection = {"image_id": int(image_id),
                                  "category_id": int(category_id),
                                  'segmentation': rle_new,
-                                 "score": float("{:.3f}".format(score))}
+                                 "score": float("{:.2f}".format(score))}
                     segments.append(detection)
         return segments
 

@@ -237,6 +237,8 @@ def main():
                         segms_and_scores[j] = segms_and_scores[j][keep_inds]
 
                 results[img_id] = segms_and_scores
+                # print(segms_and_scores)
+                # exit()
                 speed_list.append(end_image_time - start_image_time)
 
         eval_results = val_dataset.run_eval(results, input_scales, save_dir=cfg.ckpt_dir)
@@ -248,7 +250,7 @@ def main():
     for epoch in range(1, cfg.num_epochs + 1):
         start = time.time()
         train_sampler.set_epoch(epoch)
-        train(epoch)
+        # train(epoch)
         if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
             val_map(epoch)
             print(saver.save(model.module.state_dict(), 'checkpoint'))
