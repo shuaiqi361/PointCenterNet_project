@@ -250,8 +250,8 @@ def main():
     for epoch in range(1, cfg.num_epochs + 1):
         start = time.time()
         train_sampler.set_epoch(epoch)
-        # train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
+        train(epoch)
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
             val_map(epoch)
             print(saver.save(model.module.state_dict(), 'checkpoint'))
         lr_scheduler.step(epoch)  # move to here after pytorch1.1.0

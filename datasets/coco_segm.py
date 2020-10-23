@@ -361,6 +361,11 @@ class COCO_eval_segm(COCOSEGM):
                     poly = segm[:-1].reshape((-1, 2))
                     poly[:, 0] = np.clip(poly[:, 0], 0, input_scales[image_id]['w'] - 1)
                     poly[:, 1] = np.clip(poly[:, 1], 0, input_scales[image_id]['h'] - 1)
+
+                    x1, y1, x2, y2 = int(min(poly[:, 0])), int(min(poly[:, 1])), \
+                                     int(max(poly[:, 0])), int(max(poly[:, 1]))
+                    bbox = [x1, y1, x2 - x1, y2 - y1]
+
                     poly = np.ndarray.flatten(poly).tolist()
                     # print('Check length of each segm: ', len(poly))
 
@@ -373,6 +378,7 @@ class COCO_eval_segm(COCOSEGM):
                     detection = {"image_id": int(image_id),
                                  "category_id": int(category_id),
                                  'segmentation': rle_new,
+                                 'bbox': bbox,
                                  "score": float("{:.2f}".format(score))}
                     segments.append(detection)
         return segments
@@ -385,6 +391,11 @@ class COCO_eval_segm(COCOSEGM):
             json.dump(segments, open(result_json, "w"))
 
         coco_segms = self.coco.loadRes(segments)
+        coco_eval = COCOeval(self.coco, coco_segms, "bbox")
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        coco_eval.summarize()
+
         coco_eval = COCOeval(self.coco, coco_segms, "segm")
         coco_eval.evaluate()
         coco_eval.accumulate()
