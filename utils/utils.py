@@ -82,6 +82,7 @@ def load_model(model, pretrain_dir, device=0):
             print('No param {}.'.format(key))
             state_dict[key] = model_state_dict[key]
     model.load_state_dict(state_dict, strict=False)
+    del state_dict_, state_dict, model_state_dict
 
     return model
 
