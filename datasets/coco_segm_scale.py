@@ -233,6 +233,9 @@ class COCOSEGMSCALE(data.Dataset):
             contour[:, 1] = np.clip(fixed_contour[:, 1], 0, self.fmap_size['h'] - 1)
 
             box_center = np.array([(bbox[0] + bbox[2]) / 2., (bbox[1] + bbox[3]) / 2.])
+            if h < 1e-6 or w < 1e-6: # remove small bboxes
+                continue
+
             norm_shape = (contour - box_center) / np.array([w / 2., h / 2.])
 
             if h > 0 and w > 0:
