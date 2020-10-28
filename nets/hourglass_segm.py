@@ -137,6 +137,8 @@ class exkp(nn.Module):
 
         # codes layers
         self.codes_ = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 64) for _ in range(nstack)])
+        for c in self.codes_:
+            c[-1].bias.data.fill_(1.0157)  # np.exp(1/64.), average sum of all components
 
         self.relu = nn.ReLU(inplace=True)
 
