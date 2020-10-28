@@ -3,6 +3,7 @@ import cv2
 import json
 import math
 import numpy as np
+import random
 
 import torch
 import torch.utils.data as data
@@ -112,6 +113,9 @@ class COCOSEGM(data.Dataset):
         img_path = os.path.join(self.img_dir, self.coco.loadImgs(ids=[img_id])[0]['file_name'])
         ann_ids = self.coco.getAnnIds(imgIds=[img_id])
         annotations = self.coco.loadAnns(ids=ann_ids)
+        img = self.coco.loadImgs(ids=[img_id])[0]
+        w_img = int(img['width'])
+        h_img = int(img['height'])
 
         labels = []
         bboxes = []
@@ -121,7 +125,33 @@ class COCOSEGM(data.Dataset):
             if anno['iscrowd'] == 1:  # Excludes crowd objects
                 continue
 
-            polygons = anno['segmentation'][0]
+            # polygons = anno['segmentation'][0]
+            polygons = anno['segmentation']
+            if len(polygons) > 1:
+                bg = np.zeros((h_img, w_img, 1), dtype=np.uint8)
+                for poly in polygons:
+                    len_poly = len(poly)
+                    vertices = np.zeros((1, len_poly // 2, 2), dtype=np.int32)
+                    for i in range(len_poly // 2):
+                        vertices[0, i, 0] = int(poly[2 * i])
+                        vertices[0, i, 1] = int(poly[2 * i + 1])
+                    # cv2.fillPoly(bg, vertices, color=(255))
+                    cv2.drawContours(bg, vertices, color=(255), contourIdx=-1, thickness=-1)
+
+                pads = 5
+                while True:
+                    kernel = np.ones((pads, pads), np.uint8)
+                    bg_closed = cv2.morphologyEx(bg, cv2.MORPH_CLOSE, kernel)
+                    obj_contours, _ = cv2.findContours(bg_closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    if len(obj_contours) > 1:
+                        pads += 5
+                    else:
+                        polygons = obj_contours[0]
+                        break
+            else:
+                # continue
+                polygons = anno['segmentation'][0]
+
             gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
 
@@ -189,16 +219,41 @@ class COCOSEGM(data.Dataset):
 
         # -----------------------------------debug---------------------------------
         # image_show = img.copy()
-        # for bbox, label in zip(bboxes, labels):
-        #   if flipped:
-        #     bbox[[0, 2]] = width - bbox[[2, 0]] - 1
-        #   bbox[:2] = affine_transform(bbox[:2], trans_img)
-        #   bbox[2:] = affine_transform(bbox[2:], trans_img)
-        #   bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
-        #   bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
-        #   cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
-        #   cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
-        #               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        # for bbox, label, shape in zip(bboxes, labels, shapes):
+        #     if flipped:
+        #         bbox[[0, 2]] = width - bbox[[2, 0]] - 1
+        #         # Flip the contour
+        #         for m in range(self.n_vertices):
+        #             shape[2 * m] = width - shape[2 * m] - 1
+        #     bbox[:2] = affine_transform(bbox[:2], trans_img)
+        #     bbox[2:] = affine_transform(bbox[2:], trans_img)
+        #     bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
+        #     bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
+        #
+        #     # generate gt shape mean and std from contours
+        #     for m in range(self.n_vertices):  # apply scale and crop transform to shapes
+        #         shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_img)
+        #
+        #     contour = np.reshape(shape, (self.n_vertices, 2))
+        #     # Indexing from the left-most vertex, argmin x-axis
+        #     idx = np.argmin(contour[:, 0])
+        #     indexed_shape = np.concatenate((contour[idx:, :], contour[:idx, :]), axis=0)
+        #
+        #     clockwise_flag = check_clockwise_polygon(indexed_shape)
+        #     if not clockwise_flag:
+        #         fixed_contour = np.flip(indexed_shape, axis=0)
+        #     else:
+        #         fixed_contour = indexed_shape
+        #
+        #     contour[:, 0] = np.clip(fixed_contour[:, 0], 0, self.img_size['w'] - 1)
+        #     contour[:, 1] = np.clip(fixed_contour[:, 1], 0, self.img_size['h'] - 1)
+        #
+        #     # cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
+        #     # cv2.polylines(image_show, [contour.astype(np.int32)], True, (0, 0, 255), thickness=2)
+        #     cv2.drawContours(image_show, [contour.astype(np.int32)],
+        #                      color=(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)),
+        #                      contourIdx=-1, thickness=-1)
+        #
         # cv2.imshow('img', image_show)
         # cv2.waitKey()
         # -----------------------------------debug---------------------------------
@@ -257,7 +312,7 @@ class COCOSEGM(data.Dataset):
             contour_mean = np.mean(contour, axis=0)
             contour_std = np.std(contour, axis=0)
             if np.sqrt(np.sum(contour_std ** 2)) <= 1e-6:
-                norm_shape = (contour - contour_mean)
+                continue
             else:
                 norm_shape = (contour - contour_mean) / np.sqrt(np.sum(contour_std ** 2))
 
@@ -268,9 +323,9 @@ class COCOSEGM(data.Dataset):
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 w_h_std[k] = contour_std
-                codes_[k], _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
-                                         lmbda=self.sparse_alpha, max_iter=60)
-                # w_h_[k] = 1. * w, 1. * h
+                temp_codes, _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
+                                         lmbda=self.sparse_alpha, max_iter=80)
+                codes_[k] = np.exp(temp_codes)
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
                 ind_masks[k] = 1
@@ -289,6 +344,14 @@ class COCOSEGM(data.Dataset):
         # canvas[self.fmap_size['h']:, self.fmap_size['w']:, :] = np.tile(np.expand_dims(hmap[3], 2), (1, 1, 3))
         # print(w_h_[0], regs[0])
         # cv2.imshow('hmap', canvas)
+        # cv2.waitKey()
+        # -----------------------------------debug---------------------------------
+        # -----------------------------------debug---------------------------------
+        # image_show = img.copy()
+        # for bbox, label, shape in zip(bboxes, labels, shapes):
+        #     cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
+        #     cv2.polylines(image_show, [contour.astype(np.int32)], True, (0, 0, 255), thickness=2)
+        # cv2.imshow('img', image_show)
         # cv2.waitKey()
         # -----------------------------------debug---------------------------------
 
@@ -359,15 +422,15 @@ class COCO_eval_segm(COCOSEGM):
                 category_id = self.valid_ids[cls_ind - 1]
                 for segm in all_segments[image_id][cls_ind]:  # decode the segments to RLE
                     poly = segm[:-1].reshape((-1, 2))
-                    poly[:, 0] = np.clip(poly[:, 0], 0, input_scales[image_id]['w'] - 1)
-                    poly[:, 1] = np.clip(poly[:, 1], 0, input_scales[image_id]['h'] - 1)
+                    # poly[:, 0] = np.clip(poly[:, 0], 0, input_scales[image_id]['w'] - 1)
+                    # poly[:, 1] = np.clip(poly[:, 1], 0, input_scales[image_id]['h'] - 1)
 
-                    x1, y1, x2, y2 = int(min(poly[:, 0])), int(min(poly[:, 1])), \
-                                     int(max(poly[:, 0])), int(max(poly[:, 1]))
+                    x1, y1, x2, y2 = min(poly[:, 0]), min(poly[:, 1]), \
+                                     max(poly[:, 0]), max(poly[:, 1])
                     bbox = [x1, y1, x2 - x1, y2 - y1]
+                    bbox_out = list(map(lambda x: float("{:.2f}".format(x)), bbox))
 
                     poly = np.ndarray.flatten(poly).tolist()
-                    # print('Check length of each segm: ', len(poly))
 
                     rles = cocomask.frPyObjects([poly], input_scales[image_id]['h'], input_scales[image_id]['w'])
                     rle = cocomask.merge(rles)
@@ -378,7 +441,7 @@ class COCO_eval_segm(COCOSEGM):
                     detection = {"image_id": int(image_id),
                                  "category_id": int(category_id),
                                  'segmentation': rle_new,
-                                 'bbox': bbox,
+                                 'bbox': bbox_out,
                                  "score": float("{:.2f}".format(score))}
                     segments.append(detection)
         return segments
@@ -416,9 +479,7 @@ if __name__ == '__main__':
     import pickle
 
     dataset = COCOSEGM('/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17',
-                       '/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17/my_annotation/train_instance_v32.json',
-                       '/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17/my_annotation/train_norm_shape_v32.json',
-                       '/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17/dictionary/train_dict_v32_n64_a0.01.npy',
+                       '/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/dictionary/train_dict_v32_n64_a0.01.npy',
                        'train')
     # for d in dataset:
     #   b1 = d
@@ -426,7 +487,7 @@ if __name__ == '__main__':
 
     # pass
     train_loader = torch.utils.data.DataLoader(dataset, batch_size=1,
-                                               shuffle=False, num_workers=1,
+                                               shuffle=False, num_workers=0,
                                                pin_memory=False, drop_last=True)
 
     for b in tqdm(train_loader):

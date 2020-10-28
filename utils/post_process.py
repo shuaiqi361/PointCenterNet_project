@@ -90,7 +90,8 @@ def ctsegm_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
     std_ = torch.sqrt(torch.sum(w_h_ ** 2., dim=2, keepdim=True))
 
     codes_ = _tranpose_and_gather_feature(codes_, inds)
-    codes_ = codes_.view(batch, K, 64)
+    # codes_ = codes_.view(batch, K, 64)
+    codes_ = torch.log(codes_).view(batch, K, 64)
 
     clses = clses.view(batch, K, 1).float()
     scores = scores.view(batch, K, 1)
@@ -129,16 +130,22 @@ def ctsegm_scale_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
     w_h_ = w_h_.view(batch, K, 2)
 
     codes_ = _tranpose_and_gather_feature(codes_, inds)
-    codes_ = codes_.view(batch, K, 64)
+    # codes_ = codes_.view(batch, K, 64)
+    codes_ = torch.log(codes_).view(batch, K, 64)
 
     clses = clses.view(batch, K, 1).float()
     scores = scores.view(batch, K, 1)
+
+    bboxes = torch.cat([xs - w_h_[..., 0:1] / 2,
+                        ys - w_h_[..., 1:2] / 2,
+                        xs + w_h_[..., 0:1] / 2,
+                        ys + w_h_[..., 1:2] / 2], dim=2)
 
     segms = torch.matmul(codes_, dictionary)
     # print('Sizes:', segms.size(), std_.size(), xs.size())
     segms = segms.view(batch, K, 32, 2) * w_h_.view(batch, K, 1, 2) / 2. \
             + torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)
-    segmentations = torch.cat([segms.view(batch, K, -1), scores, clses], dim=2)
+    segmentations = torch.cat([segms.view(batch, K, -1), bboxes, scores, clses], dim=2)
 
     return segmentations
 

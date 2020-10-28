@@ -108,6 +108,9 @@ class COCOSEGMSCALE(data.Dataset):
         img_path = os.path.join(self.img_dir, self.coco.loadImgs(ids=[img_id])[0]['file_name'])
         ann_ids = self.coco.getAnnIds(imgIds=[img_id])
         annotations = self.coco.loadAnns(ids=ann_ids)
+        img = self.coco.loadImgs(ids=[img_id])[0]
+        w_img = int(img['width'])
+        h_img = int(img['height'])
 
         labels = []
         bboxes = []
@@ -117,7 +120,32 @@ class COCOSEGMSCALE(data.Dataset):
             if anno['iscrowd'] == 1:  # Excludes crowd objects
                 continue
 
-            polygons = anno['segmentation'][0]
+            polygons = anno['segmentation']
+            if len(polygons) > 1:
+                bg = np.zeros((h_img, w_img, 1), dtype=np.uint8)
+                for poly in polygons:
+                    len_poly = len(poly)
+                    vertices = np.zeros((1, len_poly // 2, 2), dtype=np.int32)
+                    for i in range(len_poly // 2):
+                        vertices[0, i, 0] = int(poly[2 * i])
+                        vertices[0, i, 1] = int(poly[2 * i + 1])
+
+                    cv2.drawContours(bg, vertices, color=(255), contourIdx=-1, thickness=-1)
+
+                pads = 5
+                while True:
+                    kernel = np.ones((pads, pads), np.uint8)
+                    bg_closed = cv2.morphologyEx(bg, cv2.MORPH_CLOSE, kernel)
+                    obj_contours, _ = cv2.findContours(bg_closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    if len(obj_contours) > 1:
+                        pads += 5
+                    else:
+                        polygons = obj_contours[0]
+                        break
+            else:
+                # continue
+                polygons = anno['segmentation'][0]
+
             gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
 
@@ -232,8 +260,8 @@ class COCOSEGMSCALE(data.Dataset):
             contour[:, 0] = np.clip(fixed_contour[:, 0], 0, self.fmap_size['w'] - 1)
             contour[:, 1] = np.clip(fixed_contour[:, 1], 0, self.fmap_size['h'] - 1)
 
-            box_center = np.array([(bbox[0] + bbox[2]) / 2., (bbox[1] + bbox[3]) / 2.])
-            if h < 1e-6 or w < 1e-6: # remove small bboxes
+            box_center = np.array([(bbox[0] + bbox[2]) / 2., (bbox[1] + bbox[3]) / 2.], dtype=np.float32)
+            if h < 1e-6 or w < 1e-6:  # remove small bboxes
                 continue
 
             norm_shape = (contour - box_center) / np.array([w / 2., h / 2.])
@@ -244,8 +272,9 @@ class COCOSEGMSCALE(data.Dataset):
 
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
-                codes_[k], _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
-                                         lmbda=self.sparse_alpha, max_iter=60)
+                temp_codes, _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
+                                         lmbda=self.sparse_alpha, max_iter=80)
+                codes_[k] = np.exp(temp_codes)  # apply exponential to regularize the predicted codes
                 w_h_[k] = 1. * w, 1. * h
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
@@ -329,16 +358,15 @@ class COCO_eval_segm_scale(COCOSEGMSCALE):
             for cls_ind in all_segments[image_id]:
                 category_id = self.valid_ids[cls_ind - 1]
                 for segm in all_segments[image_id][cls_ind]:  # decode the segments to RLE
-                    poly = segm[:-1].reshape((-1, 2))
-                    poly[:, 0] = np.clip(poly[:, 0], 0, input_scales[image_id]['w'] - 1)
-                    poly[:, 1] = np.clip(poly[:, 1], 0, input_scales[image_id]['h'] - 1)
+                    poly = segm[:-5].reshape((-1, 2))
+                    # poly[:, 0] = np.clip(poly[:, 0], 0, input_scales[image_id]['w'] - 1)
+                    # poly[:, 1] = np.clip(poly[:, 1], 0, input_scales[image_id]['h'] - 1)
 
-                    x1, y1, x2, y2 = int(min(poly[:, 0])), int(min(poly[:, 1])), \
-                                     int(max(poly[:, 0])), int(max(poly[:, 1]))
+                    x1, y1, x2, y2 = segm[-5:-1]
                     bbox = [x1, y1, x2 - x1, y2 - y1]
+                    bbox_out = list(map(lambda x: float("{:.2f}".format(x)), bbox))
 
                     poly = np.ndarray.flatten(poly).tolist()
-                    # print('Check length of each segm: ', len(poly))
 
                     rles = cocomask.frPyObjects([poly], input_scales[image_id]['h'], input_scales[image_id]['w'])
                     rle = cocomask.merge(rles)
@@ -349,7 +377,7 @@ class COCO_eval_segm_scale(COCOSEGMSCALE):
                     detection = {"image_id": int(image_id),
                                  "category_id": int(category_id),
                                  'segmentation': rle_new,
-                                 'bbox': bbox,
+                                 'bbox': bbox_out,
                                  "score": float("{:.2f}".format(score))}
                     segments.append(detection)
         return segments

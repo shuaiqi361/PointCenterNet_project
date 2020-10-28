@@ -216,12 +216,22 @@ def main():
                                                                     inputs[scale]['center'],
                                                                     inputs[scale]['scale'],
                                                                     (inputs[scale]['fmap_w'], inputs[scale]['fmap_h']))
+                    segms[:, cfg.n_vertices * 2:cfg.n_vertices * 2 + 2] = transform_preds(
+                        segms[:, cfg.n_vertices * 2:cfg.n_vertices * 2 + 2],
+                        inputs[scale]['center'],
+                        inputs[scale]['scale'],
+                        (inputs[scale]['fmap_w'], inputs[scale]['fmap_h']))
+                    segms[:, cfg.n_vertices * 2 + 2:cfg.n_vertices * 2 + 4] = transform_preds(
+                        segms[:, cfg.n_vertices * 2 + 2:cfg.n_vertices * 2 + 4],
+                        inputs[scale]['center'],
+                        inputs[scale]['scale'],
+                        (inputs[scale]['fmap_w'], inputs[scale]['fmap_h']))
 
                     clses = segms[:, -1]
                     for j in range(val_dataset.num_classes):
                         inds = (clses == j)
-                        top_preds[j + 1] = segms[inds, :cfg.n_vertices * 2 + 1].astype(np.float32)
-                        top_preds[j + 1][:, :cfg.n_vertices * 2] /= scale
+                        top_preds[j + 1] = segms[inds, :cfg.n_vertices * 2 + 5].astype(np.float32)
+                        top_preds[j + 1][:, :cfg.n_vertices * 2 + 4] /= scale
 
                     segmentations.append(top_preds)
 
@@ -229,12 +239,12 @@ def main():
                 segms_and_scores = {j: np.concatenate([d[j] for d in segmentations], axis=0)
                                     for j in range(1, val_dataset.num_classes + 1)}
                 scores = np.hstack(
-                    [segms_and_scores[j][:, cfg.n_vertices * 2] for j in range(1, val_dataset.num_classes + 1)])
+                    [segms_and_scores[j][:, cfg.n_vertices * 2 + 4] for j in range(1, val_dataset.num_classes + 1)])
                 if len(scores) > max_per_image:
                     kth = len(scores) - max_per_image
                     thresh = np.partition(scores, kth)[kth]
                     for j in range(1, val_dataset.num_classes + 1):
-                        keep_inds = (segms_and_scores[j][:, cfg.n_vertices * 2] >= thresh)
+                        keep_inds = (segms_and_scores[j][:, cfg.n_vertices * 2 + 4] >= thresh)
                         segms_and_scores[j] = segms_and_scores[j][keep_inds]
 
                 results[img_id] = segms_and_scores
