@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
-from datasets.coco_segm_scale import COCOSEGMSCALE, COCO_eval_segm_scale
+from datasets.coco_segm_shift import COCOSEGMSHIFT, COCO_eval_segm_shift
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass_segm import get_hourglass
@@ -97,7 +97,7 @@ def main():
 
     print('Setting up data...')
     dictionary = np.load(cfg.dictionary_file)
-    Dataset = COCOSEGMSCALE if cfg.dataset == 'coco' else PascalVOC
+    Dataset = COCOSEGMSHIFT if cfg.dataset == 'coco' else PascalVOC
     train_dataset = Dataset(cfg.data_dir, cfg.dictionary_file,
                             'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,
@@ -112,7 +112,7 @@ def main():
                                                drop_last=True,
                                                sampler=train_sampler if cfg.dist else None)
 
-    Dataset_eval = COCO_eval_segm_scale if cfg.dataset == 'coco' else PascalVOC_eval
+    Dataset_eval = COCO_eval_segm_shift if cfg.dataset == 'coco' else PascalVOC_eval
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
                                'val', test_scales=[1.], test_flip=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,

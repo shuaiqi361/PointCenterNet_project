@@ -53,9 +53,9 @@ def encode_mask(mask):
     return rle
 
 
-class COCOSEGMSCALE(data.Dataset):
+class COCOSEGMSHIFT(data.Dataset):
     def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=512):
-        super(COCOSEGMSCALE, self).__init__()
+        super(COCOSEGMSHIFT, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
         self.valid_ids = COCO_IDS
@@ -129,6 +129,8 @@ class COCOSEGMSCALE(data.Dataset):
                 # fixed_contour = align_original_polygon(fixed_contour_, contour)
             elif len(contour) < self.n_vertices:
                 fixed_contour = turning_angle_resample(contour, self.n_vertices)
+            else:
+                fixed_contour = contour
 
             fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
             fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
@@ -281,9 +283,9 @@ class COCOSEGMSCALE(data.Dataset):
         return self.num_samples
 
 
-class COCO_eval_segm_scale(COCOSEGMSCALE):
+class COCO_eval_segm_shift(COCOSEGMSHIFT):
     def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False):
-        super(COCO_eval_segm_scale, self).__init__(data_dir, dictionary_file, split)
+        super(COCO_eval_segm_shift, self).__init__(data_dir, dictionary_file, split)
         self.test_flip = test_flip
         self.test_scales = test_scales
         self.fix_size = fix_size
