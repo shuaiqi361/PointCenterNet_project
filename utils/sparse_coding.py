@@ -1,11 +1,125 @@
 import numpy as np
-import time
-import sys
 import itertools
 from math import sqrt, ceil
 from scipy import linalg
 from sklearn.utils.extmath import randomized_svd, row_norms
 from sklearn.utils import check_array, check_random_state, gen_even_slices, gen_batches, shuffle
+from scipy.spatial import distance
+import cv2
+
+
+def get_connected_polygon(polygons, img_hw, closing_max_kernel=50):
+    h_img, w_img = img_hw
+    if len(polygons) > 1:
+        bg = np.zeros((h_img, w_img, 1), dtype=np.uint8)
+        for poly in polygons:
+            len_poly = len(poly)
+            vertices = np.zeros((1, len_poly // 2, 2), dtype=np.int32)
+            for i in range(len_poly // 2):
+                vertices[0, i, 0] = int(poly[2 * i])
+                vertices[0, i, 1] = int(poly[2 * i + 1])
+            cv2.drawContours(bg, vertices, color=255, contourIdx=-1, thickness=-1)
+
+        pads = 5
+        while True:
+            kernel = np.ones((pads, pads), np.uint8)
+            bg_closed = cv2.morphologyEx(bg, cv2.MORPH_CLOSE, kernel)
+            obj_contours, _ = cv2.findContours(bg_closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            if len(obj_contours) > 1:
+                pads += 5
+            else:
+                return np.ndarray.flatten(obj_contours[0]).tolist()
+
+            if pads > closing_max_kernel:
+                obj_contours = sorted(obj_contours, key=cv2.contourArea)
+                return np.ndarray.flatten(obj_contours[-1]).tolist()  # The largest piece
+
+    else:
+        # continue
+        return polygons[0]
+
+
+def closest_node(node, nodes):
+    closest_index = distance.cdist([node], nodes).argmin()
+    return nodes[closest_index]
+
+
+def align_original_polygon(resampled, original):
+    """
+    For each vertex in the resampled polygon, find the closest vertex in the original polygon, and align them.
+    :param resampled:
+    :param original:
+    :return:
+    """
+    poly = np.zeros(shape=resampled.shape)
+    num = len(resampled)
+    for i in range(num):
+        vertex = resampled[i]
+        poly[i] = closest_node(vertex, original)
+
+    return poly
+
+
+def turning_angle_resample(polygon, n_vertices):
+    """
+    :param polygon: ndarray with shape (n_vertices, 2)
+    :param n_vertices: resulting number of vertices of the polygon
+    :return:
+    """
+    assert n_vertices >= 3
+    polygon = polygon.reshape((-1, 2))
+    original_num_vertices = len(polygon)
+    shape_poly = polygon.copy()
+
+    if original_num_vertices == n_vertices:
+        return polygon
+    elif original_num_vertices < n_vertices:
+        while len(shape_poly) < n_vertices:
+            max_idx = -1
+            max_dist = 0.
+            insert_coord = np.array([-1, -1])
+            for i in range(len(shape_poly)):
+                x1, y1 = shape_poly[i, :]
+                x2, y2 = shape_poly[(i + 1) % len(shape_poly), :]  # connect to the first vertex
+                dist = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+                if dist > max_dist:
+                    max_idx = (i + 1) % len(shape_poly)
+                    max_dist = dist
+                    insert_coord[0] = (x1 + x2) / 2.
+                    insert_coord[1] = (y1 + y2) / 2.
+
+            shape_poly = np.insert(shape_poly, max_idx, insert_coord, axis=0)
+
+        return shape_poly
+    else:
+        turning_angles = [0] * original_num_vertices
+        for i in range(original_num_vertices):
+            a_p = shape_poly[i, :]
+            b_p = shape_poly[(i + 1) % original_num_vertices, :]
+            c_p = shape_poly[(i + 2) % original_num_vertices, :]
+            turning_angles[(i + 1) % original_num_vertices] = calculate_turning_angle(a_p, b_p, c_p)
+
+        print('Turning angles:', turning_angles)
+        print(np.argsort(turning_angles).tolist())
+        idx = np.argsort(turning_angles).tolist()[0:n_vertices]
+        # get the indices of vertices from turning angle list from small to large, small means sharper turns
+        new_poly = np.zeros((0, 2))
+        for i in range(original_num_vertices):
+            if i in idx:
+                new_poly = np.concatenate((new_poly, shape_poly[i].reshape((1, -1))), axis=0)
+
+        return new_poly
+
+
+def calculate_turning_angle(a, b, c):
+    ba = a - b
+    bc = c - b
+
+    cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+    angle = np.arccos(cosine_angle)
+    # print('Angle:', angle)
+
+    return min(angle / np.pi * 180, 360 - angle / np.pi * 180)
 
 
 def check_clockwise_polygon(polygon):
