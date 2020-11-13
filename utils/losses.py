@@ -68,3 +68,9 @@ def smooth_reg_loss(regs, gt_regs, mask):
     mask = mask[:, :, None].expand_as(gt_regs).float()
     loss = sum(F.smooth_l1_loss(r * mask, gt_regs * mask, reduction='sum') / (mask.sum() + 1e-4) for r in regs)
     return loss / len(regs)
+
+
+def mse_reg_loss(regs, gt_regs, mask):
+    mask = mask[:, :, None].expand_as(gt_regs).float()
+    loss = sum(F.mse_loss(r * mask, gt_regs * mask, reduction='sum') / (mask.sum() + 1e-4) for r in regs)
+    return loss / len(regs)

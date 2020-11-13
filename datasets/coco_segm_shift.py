@@ -253,7 +253,7 @@ class COCOSEGMSHIFT(data.Dataset):
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 temp_codes, _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
-                                         lmbda=self.sparse_alpha, max_iter=80)
+                                         lmbda=self.sparse_alpha, max_iter=60)
                 # codes_[k] = np.exp(temp_codes)  # apply exponential to regularize the predicted codes
                 codes_[k] = temp_codes
                 w_h_[k] = 1. * w, 1. * h
