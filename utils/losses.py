@@ -64,6 +64,13 @@ def _reg_loss(regs, gt_regs, mask):
     return loss / len(regs)
 
 
+def norm_reg_loss(regs, gt_regs, mask):
+    mask = mask[:, :, None].expand_as(gt_regs).float()
+    norm_gt_codes = torch.norm(gt_regs * mask, dim=2, keepdim=True)
+    loss = sum(torch.sum(F.l1_loss(r * mask, gt_regs * mask, reduction='none') / norm_gt_codes) / (mask.sum() + 1e-4) for r in regs)
+    return loss / len(regs)
+
+
 def smooth_reg_loss(regs, gt_regs, mask):
     mask = mask[:, :, None].expand_as(gt_regs).float()
     loss = sum(F.smooth_l1_loss(r * mask, gt_regs * mask, reduction='sum') / (mask.sum() + 1e-4) for r in regs)
