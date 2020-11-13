@@ -155,16 +155,11 @@ def main():
 
             outputs = model(batch['image'])
             hmap, regs, w_h_, codes_ = zip(*outputs)
-            print('Before:')
-            for r in codes_:
-                print(r.size())
+
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
             codes_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_]
-            print('After:')
-            for r in codes_:
-                print(r.size())
-            exit()
+
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
