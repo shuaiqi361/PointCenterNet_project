@@ -130,8 +130,8 @@ def ctsegm_scale_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
     w_h_ = w_h_.view(batch, K, 2)
 
     codes_ = _tranpose_and_gather_feature(codes_, inds)
-    # codes_ = codes_.view(batch, K, 64)
-    codes_ = torch.log(codes_).view(batch, K, 64)
+    codes_ = codes_.view(batch, K, 64)
+    # codes_ = torch.log(codes_).view(batch, K, 64)
 
     clses = clses.view(batch, K, 1).float()
     scores = scores.view(batch, K, 1)
@@ -238,4 +238,3 @@ def ctsegm_shift_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
     segmentations = torch.cat([segms.view(batch, K, -1), bboxes, scores, clses], dim=2)
 
     return segmentations
-
