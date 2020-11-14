@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
-from datasets.coco_segm_scale import COCOSEGMSCALE, COCO_eval_segm_scale
+from datasets.coco_segm_scale_new_resample import COCOSEGMSCALE, COCO_eval_segm_scale
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass_segm import get_hourglass
