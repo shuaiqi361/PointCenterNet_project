@@ -186,6 +186,7 @@ def ctsegm_cmm_decode(hmap, regs, w_h_, codes_, shapes_, K=100):
                         xs + w_h_[..., 0:1] / 2,
                         ys + w_h_[..., 1:2] / 2], dim=2)
 
+    shapes_ = _tranpose_and_gather_feature(shapes_, inds)
     segms = shapes_.view(batch, K, 32, 2) + torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)
     segmentations = torch.cat([segms.view(batch, K, -1), bboxes, scores, clses], dim=2)
 

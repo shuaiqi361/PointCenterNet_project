@@ -21,7 +21,7 @@ import torch.distributed as dist
 from datasets.coco_segm_cmm import COCOSEGMCMM, COCO_eval_segm_cmm
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
-from nets.hourglass_segm import get_hourglass, exkp
+from nets.hourglass_segm_cmm import get_hourglass, exkp
 from nets.resdcn import get_pose_net
 
 from utils.utils import _tranpose_and_gather_feature, load_model
@@ -80,8 +80,9 @@ def main():
     saver = create_saver(cfg.local_rank, save_dir=cfg.ckpt_dir)
     logger = create_logger(cfg.local_rank, save_dir=cfg.log_dir)
     summary_writer = create_summary(cfg.local_rank, log_dir=cfg.log_dir)
-    print = logger.info
-    print(cfg)
+
+    print_log = logger.info
+    print_log(cfg)
 
     torch.manual_seed(319)
     torch.backends.cudnn.benchmark = True  # disable this if OOM at beginning of training
@@ -95,7 +96,7 @@ def main():
     else:
         cfg.device = torch.device('cuda:%d' % cfg.device_id)
 
-    print('Setting up data...')
+    print_log('Setting up data...')
     dictionary = np.load(cfg.dictionary_file)
     Dataset = COCOSEGMCMM if cfg.dataset == 'coco' else PascalVOC
     train_dataset = Dataset(cfg.data_dir, cfg.dictionary_file,
@@ -119,7 +120,7 @@ def main():
                                              shuffle=False, num_workers=1, pin_memory=False,
                                              collate_fn=val_dataset.collate_fn)
 
-    print('Creating model...')
+    print_log('Creating model...')
     if 'hourglass' in cfg.arch:
         # model = get_hourglass[cfg.arch]
         model = exkp(n=5, nstack=2, dims=[256, 256, 384, 384, 384, 512],
@@ -140,7 +141,7 @@ def main():
         model = nn.DataParallel(model, device_ids=[cfg.local_rank, ]).to(cfg.device)
 
     if cfg.pretrain_checkpoint is not None and os.path.isfile(cfg.pretrain_checkpoint):
-        print('Load pretrain model from ' + cfg.pretrain_checkpoint)
+        print_log('Load pretrain model from ' + cfg.pretrain_checkpoint)
         model = load_model(model, cfg.pretrain_checkpoint, cfg.device_id)
         torch.cuda.empty_cache()
 
@@ -148,7 +149,7 @@ def main():
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.1)
 
     def train(epoch):
-        print('\n Epoch: %d' % epoch)
+        print_log('\n Epoch: %d' % epoch)
         model.train()
         tic = time.perf_counter()
         for batch_idx, batch in enumerate(train_loader):
@@ -158,6 +159,9 @@ def main():
 
             outputs = model(batch['image'])
             hmap, regs, w_h_, codes_, shapes_ = zip(*outputs)
+            # print('Before gather feature: ', len(regs))
+            # for c in regs:
+            #     print('regs sizes: ', c.size())
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
             codes_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_]
@@ -168,7 +172,6 @@ def main():
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             cmm_loss = contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'])
             loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss
-            exit()
 
             optimizer.zero_grad()
             loss.backward()
@@ -177,7 +180,7 @@ def main():
             if batch_idx % cfg.log_interval == 0:
                 duration = time.perf_counter() - tic
                 tic = time.perf_counter()
-                print('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
+                print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
                       ' hmap_loss= %.3f reg_loss= %.3f w_h_loss= %.3f  cmm_loss= %.3f' %
                       (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), cmm_loss.item()) +
                       ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
@@ -190,7 +193,7 @@ def main():
         return
 
     def val_map(epoch):
-        print('\n Val@Epoch: %d' % epoch)
+        print_log('\n Val@Epoch: %d' % epoch)
         model.eval()
         torch.cuda.empty_cache()
         max_per_image = 100
@@ -255,22 +258,22 @@ def main():
                 speed_list.append(end_image_time - start_image_time)
 
         eval_results = val_dataset.run_eval(results, input_scales, save_dir=cfg.ckpt_dir)
-        print(eval_results)
+        print_log(eval_results)
         summary_writer.add_scalar('val_mAP/mAP', eval_results[0], epoch)
-        print('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))
+        print_log('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))
 
-    print('Starting training...')
+    print_log('Starting training...')
     for epoch in range(1, cfg.num_epochs + 1):
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
         if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
             val_map(epoch)
-            print(saver.save(model.module.state_dict(), 'checkpoint'))
+            print_log(saver.save(model.module.state_dict(), 'checkpoint'))
         lr_scheduler.step(epoch)  # move to here after pytorch1.1.0
 
         epoch_time = (time.time() - start) / 3600. / 24.
-        print('ETA:{:.2f} Days'.format((cfg.num_epochs - epoch) * epoch_time))
+        print_log('ETA:{:.2f} Days'.format((cfg.num_epochs - epoch) * epoch_time))
 
     summary_writer.close()
 

@@ -3,16 +3,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask_):
-    for c in pred_codes:
-        print('pred_codes: ', c.size())
-    for c in pred_shapes:
-        print('pred_shapes: ', c.size())
-    print('gt shape and mask size: ', gt_shapes.size(), mask_.size())
-    mask = mask_[:, :, None].expand_as(gt_shapes).float()
-    loss_cmm = sum(F.smooth_l1_loss(r * mask, gt_shapes * mask, reduction='sum') / 32. / (mask.sum() + 1e-4) for r in pred_shapes)
-    mask = mask_[:, :, None].expand_as(pred_codes).float()
+def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask):
+    # print('In cmm loss:')
+    # for c in pred_codes:
+    #     print('pred_codes: ', c.size())
+    # for c in pred_shapes:
+    #     print('pred_shapes: ', c.size())
+    # print('gt shape and mask size: ', gt_shapes.size(), mask.size())
+    mask = mask[:, :, None].expand_as(gt_shapes).float()
+    # print('After expand_as gt shape and mask size: ', gt_shapes.size(), mask.size())
+    loss_cmm = sum(F.smooth_l1_loss(r * mask, gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) for r in pred_shapes)
+
     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
+    # print('Loss items: ', loss_cmm.item() + 0.1 * loss_sparsity.item())
     return loss_cmm + 0.1 * loss_sparsity
 
 

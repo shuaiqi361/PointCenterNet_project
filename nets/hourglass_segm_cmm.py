@@ -104,7 +104,7 @@ class kp_module(nn.Module):
 
 
 class exkp(nn.Module):
-    def __init__(self, n, nstack, dims, modules, dictionary, cnv_dim=256, num_classes=80):
+    def __init__(self, n, nstack, dims, modules, dictionary=None, cnv_dim=256, num_classes=80):
         super(exkp, self).__init__()
 
         self.nstack = nstack
@@ -160,7 +160,7 @@ class exkp(nn.Module):
                 code_out = self.codes_[ind](cnv)
                 shape_out = torch.matmul(code_out.view(bs, code_out.size(2), code_out.size(3), -1), self.dictionary)
                 outs.append([self.hmap[ind](cnv), self.regs[ind](cnv), self.w_h_[ind](cnv),
-                             code_out, shape_out])
+                             code_out, shape_out.view(bs, -1, code_out.size(2), code_out.size(3))])
 
             if ind < self.nstack - 1:
                 inter = self.inters_[ind](inter) + self.cnvs_[ind](cnv)
