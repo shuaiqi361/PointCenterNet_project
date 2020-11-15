@@ -3,6 +3,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask_):
+    for c in pred_codes:
+        print('pred_codes: ', c.size())
+    for c in pred_shapes:
+        print('pred_shapes: ', c.size())
+    print('gt shape and mask size: ', gt_shapes.size(), mask_.size())
+    mask = mask_[:, :, None].expand_as(gt_shapes).float()
+    loss_cmm = sum(F.smooth_l1_loss(r * mask, gt_shapes * mask, reduction='sum') / 32. / (mask.sum() + 1e-4) for r in pred_shapes)
+    mask = mask_[:, :, None].expand_as(pred_codes).float()
+    loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
+    return loss_cmm + 0.1 * loss_sparsity
+
+
 def _neg_loss_slow(preds, targets):
     pos_inds = targets == 1  # todo targets > 1-epsilon ?
     neg_inds = targets < 1  # todo targets < 1-epsilon ?
