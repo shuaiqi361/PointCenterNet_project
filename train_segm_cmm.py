@@ -31,7 +31,7 @@ from utils.summary import create_summary, create_logger, create_saver, DisablePr
 from utils.post_process import ctsegm_cmm_decode
 
 # Training settings
-parser = argparse.ArgumentParser(description='simple_centernet_segm_cmm')
+parser = argparse.ArgumentParser(description='simple_centernet_segm_ncmm')
 
 parser.add_argument('--local_rank', type=int, default=0)
 parser.add_argument('--device_id', type=int, default=0)  # specify device id for single GPU training
