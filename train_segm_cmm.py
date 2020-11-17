@@ -26,7 +26,7 @@ from nets.resdcn import get_pose_net
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss
+from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss, norm_contour_mapping_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_cmm_decode
 
@@ -170,7 +170,8 @@ def main():
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
-            cmm_loss = contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'])
+            # cmm_loss = contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'])
+            cmm_loss = norm_contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['w_h_'], batch['ind_masks'])
             loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss
 
             optimizer.zero_grad()

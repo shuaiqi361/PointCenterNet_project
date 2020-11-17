@@ -3,6 +3,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask):
+    # gt_shape size: (bs, 128, 64)
+    norm_factor = torch.sqrt(gt_w_h[:, :, 0] * gt_w_h[:, :, 1])[:, :, None]
+    mask = mask[:, :, None].expand_as(gt_shapes).float()
+    print('Norm factor size: ', norm_factor.size())
+    print(gt_shapes.size())
+    loss = sum(
+        torch.sum(F.smooth_l1_loss(r * mask, gt_shapes * mask, reduction='none') / norm_factor) / (mask.sum() + 1e-4)
+        for r in pred_shapes)
+
+    loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
+    print(loss_sparsity.item())
+    exit()
+    return loss + 0.05 * loss_sparsity
+
+
 def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask):
     # print('In cmm loss:')
     # for c in pred_codes:
