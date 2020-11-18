@@ -13,7 +13,8 @@ from scipy.signal import resample
 
 from utils.image import get_border, get_affine_transform, affine_transform, color_aug
 from utils.image import draw_umich_gaussian, gaussian_radius
-from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon, turning_angle_resample
+from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon, \
+    turning_angle_resample, get_connected_polygon_using_mask
 
 COCO_NAMES = ['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
               'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
@@ -118,7 +119,8 @@ class COCOSEGMSHIFT(data.Dataset):
             if anno['iscrowd'] == 1:  # Excludes crowd objects
                 continue
 
-            polygons = get_connected_polygon(anno['segmentation'], (h_img, w_img))
+            polygons = get_connected_polygon_using_mask(anno['segmentation'], (h_img, w_img),
+                                                        n_vertices=self.n_vertices, closing_max_kernel=50)
 
             gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
@@ -126,14 +128,12 @@ class COCOSEGMSHIFT(data.Dataset):
             # Downsample the contour to fix number of vertices
             if len(contour) > self.n_vertices:
                 fixed_contour = resample(contour, num=self.n_vertices)
-                # fixed_contour = align_original_polygon(fixed_contour_, contour)
-            elif len(contour) < self.n_vertices:
-                fixed_contour = turning_angle_resample(contour, self.n_vertices)
             else:
-                fixed_contour = contour
+                fixed_contour = turning_angle_resample(contour, self.n_vertices)
 
             fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
             fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
+
             # contour_mean = np.mean(fixed_contour, axis=0)
             contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
             if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
@@ -226,25 +226,25 @@ class COCOSEGMSHIFT(data.Dataset):
             for m in range(self.n_vertices):  # apply scale and crop transform to shapes
                 shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_fmap)
 
-            contour = np.reshape(shape, (self.n_vertices, 2))
-            # Indexing from the left-most vertex, argmin x-axis
-            idx = np.argmin(contour[:, 0])
-            indexed_shape = np.concatenate((contour[idx:, :], contour[:idx, :]), axis=0)
+            shape_clipped = np.reshape(shape, (self.n_vertices, 2))
 
-            clockwise_flag = check_clockwise_polygon(indexed_shape)
+            shape_clipped[:, 0] = np.clip(shape_clipped[:, 0], 0, self.fmap_size['w'] - 1)
+            shape_clipped[:, 1] = np.clip(shape_clipped[:, 1], 0, self.fmap_size['h'] - 1)
+
+            clockwise_flag = check_clockwise_polygon(shape_clipped)
             if not clockwise_flag:
-                fixed_contour = np.flip(indexed_shape, axis=0)
+                fixed_contour = np.flip(shape_clipped, axis=0)
             else:
-                fixed_contour = indexed_shape.copy()
-
-            contour[:, 0] = np.clip(fixed_contour[:, 0], 0, self.fmap_size['w'] - 1)
-            contour[:, 1] = np.clip(fixed_contour[:, 1], 0, self.fmap_size['h'] - 1)
+                fixed_contour = shape_clipped.copy()
+            # Indexing from the left-most vertex, argmin x-axis
+            idx = np.argmin(fixed_contour[:, 0])
+            indexed_shape = np.concatenate((fixed_contour[idx:, :], fixed_contour[:idx, :]), axis=0)
 
             box_center = np.array([(bbox[0] + bbox[2]) / 2., (bbox[1] + bbox[3]) / 2.], dtype=np.float32)
             if h < 1e-6 or w < 1e-6:  # remove small bboxes
                 continue
 
-            centered_shape = contour - box_center
+            centered_shape = indexed_shape - box_center
 
             if h > 0 and w > 0:
                 obj_c = box_center
@@ -252,10 +252,8 @@ class COCOSEGMSHIFT(data.Dataset):
 
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
-                temp_codes, _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
+                codes_[k], _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
                                          lmbda=self.sparse_alpha, max_iter=60)
-                # codes_[k] = np.exp(temp_codes)  # apply exponential to regularize the predicted codes
-                codes_[k] = temp_codes
                 w_h_[k] = 1. * w, 1. * h
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
