@@ -204,7 +204,7 @@ class COCOSEGMCMM(data.Dataset):
 
         hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
         w_h_ = np.zeros((self.max_objs, 2), dtype=np.float32)  # width and height of the shape
-        shapes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)  # gt coefficients/codes for shapes
+        shapes_ = np.zeros((self.max_objs, self.n_vertices * 2), dtype=np.float32)  # gt coefficients/codes for shapes
         regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for offsets of shape center
         inds = np.zeros((self.max_objs,), dtype=np.int64)
         ind_masks = np.zeros((self.max_objs,), dtype=np.uint8)
@@ -213,7 +213,7 @@ class COCOSEGMCMM(data.Dataset):
         for k, (bbox, label, shape) in enumerate(zip(bboxes, labels, shapes)):
             if flipped:
                 bbox[[0, 2]] = width - bbox[[2, 0]] - 1
-                # Flip the contour
+                # Flip the contour x-axis
                 for m in range(self.n_vertices):
                     shape[2 * m] = width - shape[2 * m] - 1
 
@@ -227,25 +227,25 @@ class COCOSEGMCMM(data.Dataset):
             for m in range(self.n_vertices):  # apply scale and crop transform to shapes
                 shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_fmap)
 
-            contour = np.reshape(shape, (self.n_vertices, 2))
-            # Indexing from the left-most vertex, argmin x-axis
-            idx = np.argmin(contour[:, 0])
-            indexed_shape = np.concatenate((contour[idx:, :], contour[:idx, :]), axis=0)
+            shape_clipped = np.reshape(shape, (self.n_vertices, 2))
 
-            clockwise_flag = check_clockwise_polygon(indexed_shape)
+            shape_clipped[:, 0] = np.clip(shape_clipped[:, 0], 0, self.fmap_size['w'] - 1)
+            shape_clipped[:, 1] = np.clip(shape_clipped[:, 1], 0, self.fmap_size['h'] - 1)
+
+            clockwise_flag = check_clockwise_polygon(shape_clipped)
             if not clockwise_flag:
-                fixed_contour = np.flip(indexed_shape, axis=0)
+                fixed_contour = np.flip(shape_clipped, axis=0)
             else:
-                fixed_contour = indexed_shape.copy()
-
-            contour[:, 0] = np.clip(fixed_contour[:, 0], 0, self.fmap_size['w'] - 1)
-            contour[:, 1] = np.clip(fixed_contour[:, 1], 0, self.fmap_size['h'] - 1)
+                fixed_contour = shape_clipped.copy()
+            # Indexing from the left-most vertex, argmin x-axis
+            idx = np.argmin(fixed_contour[:, 0])
+            indexed_shape = np.concatenate((fixed_contour[idx:, :], fixed_contour[:idx, :]), axis=0)
 
             box_center = np.array([(bbox[0] + bbox[2]) / 2., (bbox[1] + bbox[3]) / 2.], dtype=np.float32)
             if h < 1e-6 or w < 1e-6:  # remove small bboxes
                 continue
 
-            centered_shape = contour - box_center
+            centered_shape = indexed_shape - box_center
 
             if h > 0 and w > 0:
                 obj_c = box_center
