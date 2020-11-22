@@ -170,7 +170,7 @@ def main():
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
-            cmm_loss = _reg_loss(codes_, batch['shapes'], batch['ind_masks'])
+            cmm_loss = _reg_loss(shapes_, batch['shapes'], batch['ind_masks'])
             # cmm_loss = contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'])
             # cmm_loss = norm_contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['w_h_'], batch['ind_masks'])
             loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss
