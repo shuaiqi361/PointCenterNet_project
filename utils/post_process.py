@@ -281,3 +281,47 @@ def ctsegm_shift_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
     segmentations = torch.cat([segms.view(batch, K, -1), bboxes, scores, clses], dim=2)
 
     return segmentations
+
+
+def ctsegm_shift_code_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
+    batch, cat, height, width = hmap.shape
+    hmap = torch.sigmoid(hmap)
+
+    # if flip test
+    if batch > 1:
+        hmap = (hmap[0:1] + flip_tensor(hmap[1:2])) / 2
+        w_h_ = (w_h_[0:1] + flip_tensor(w_h_[1:2])) / 2
+        regs = regs[0:1]
+        codes_ = codes_[0:1]
+
+    batch = 1
+
+    hmap = _nms(hmap)  # perform nms on heatmaps
+
+    scores, inds, clses, ys, xs = _topk(hmap, K=K)
+
+    regs = _tranpose_and_gather_feature(regs, inds)
+    regs = regs.view(batch, K, 2)
+    xs = xs.view(batch, K, 1) + regs[:, :, 0:1]
+    ys = ys.view(batch, K, 1) + regs[:, :, 1:2]
+
+    w_h_ = _tranpose_and_gather_feature(w_h_, inds)
+    w_h_ = w_h_.view(batch, K, 4)
+
+    codes_ = _tranpose_and_gather_feature(codes_, inds)
+    codes_ = codes_.view(batch, K, 64)
+    # codes_ = torch.log(codes_).view(batch, K, 64)
+
+    clses = clses.view(batch, K, 1).float()
+    scores = scores.view(batch, K, 1)
+
+    bboxes = torch.cat([xs - w_h_[..., 2:3],
+                        ys - w_h_[..., 0:1],
+                        xs + w_h_[..., 3:4],
+                        ys + w_h_[..., 1:2]], dim=2)
+
+    segms = torch.matmul(codes_, dictionary)
+    segms = segms.view(batch, K, 32, 2) + torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)
+    segmentations = torch.cat([segms.view(batch, K, -1), bboxes, scores, clses], dim=2)
+
+    return segmentations
