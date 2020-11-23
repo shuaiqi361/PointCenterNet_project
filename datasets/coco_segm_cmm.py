@@ -369,15 +369,16 @@ class COCO_eval_segm_cmm(COCOSEGMCMM):
             json.dump(segments, open(result_json, "w"))
 
         coco_segms = self.coco.loadRes(segments)
+        coco_eval = COCOeval(self.coco, coco_segms, "segm")
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        coco_eval.summarize()
+
         coco_eval = COCOeval(self.coco, coco_segms, "bbox")
         coco_eval.evaluate()
         coco_eval.accumulate()
         coco_eval.summarize()
 
-        coco_eval = COCOeval(self.coco, coco_segms, "segm")
-        coco_eval.evaluate()
-        coco_eval.accumulate()
-        coco_eval.summarize()
         return coco_eval.stats
 
     @staticmethod

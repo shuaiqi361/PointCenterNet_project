@@ -209,9 +209,9 @@ class COCOSEGMSHIFT(data.Dataset):
         trans_fmap = get_affine_transform(center, scale, 0, [self.fmap_size['w'], self.fmap_size['h']])
 
         hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
-        w_h_ = np.zeros((self.max_objs, 2), dtype=np.float32)  # width and height of the shape
+        w_h_ = np.zeros((self.max_objs, 4), dtype=np.float32)  # width and height of the shape
         codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)  # gt coefficients/codes for shapes
-        regs = np.zeros((self.max_objs, 4), dtype=np.float32)  # regression for 4 offsets of center of mass to the bbox
+        regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for 4 offsets of center of mass to the bbox
         inds = np.zeros((self.max_objs,), dtype=np.int64)
         ind_masks = np.zeros((self.max_objs,), dtype=np.uint8)
 
