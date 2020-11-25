@@ -334,6 +334,9 @@ class COCO_eval_segm_cmm(COCOSEGMCMM):
         # all_bboxes: num_samples x num_classes x 5
         segments = []
         for image_id in all_segments:
+            img = self.coco.loadImgs(image_id)[0]
+            w_img = int(img['width'])
+            h_img = int(img['height'])
             for cls_ind in all_segments[image_id]:
                 category_id = self.valid_ids[cls_ind - 1]
                 for segm in all_segments[image_id][cls_ind]:  # decode the segments to RLE
@@ -347,7 +350,7 @@ class COCO_eval_segm_cmm(COCOSEGMCMM):
 
                     poly = np.ndarray.flatten(poly).tolist()
 
-                    rles = cocomask.frPyObjects([poly], input_scales[image_id]['h'], input_scales[image_id]['w'])
+                    rles = cocomask.frPyObjects([poly], h_img, w_img)
                     rle = cocomask.merge(rles)
                     m = cocomask.decode(rle)
                     rle_new = encode_mask(m.astype(np.uint8))

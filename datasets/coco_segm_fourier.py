@@ -76,7 +76,7 @@ class COCOSEGMFOURIER(data.Dataset):
         self.split = split
         self.dictionary_file = dictionary_file
         self.data_dir = data_dir
-        self.img_dir = os.path.join(self.data_dir, 'images/%s2017' % split)
+        self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
         if split == 'test':
             self.annot_path = os.path.join(self.data_dir, 'annotations', 'image_info_test-dev2017.json')
         else:
@@ -344,55 +344,64 @@ class COCO_eval_segm_fourier(COCOSEGMFOURIER):
     def convert_eval_format(self, all_segments, input_scales):
         # all_bboxes: num_samples x num_classes x 5
         segments = []
-
-        # For the purpose of debugging only
-        for image_id in all_segments:
-            ann_ids = self.coco.getAnnIds(imgIds=[image_id])
-            annotations = self.coco.loadAnns(ids=ann_ids)
-            for anno in annotations:
-                polygons = get_connected_polygon_using_mask(anno['segmentation'],
-                                                            (input_scales[image_id]['h'], input_scales[image_id]['w']),
-                                                            n_vertices=self.n_vertices, closing_max_kernel=50)
-                cat_id = anno['category_id']
-                rles = cocomask.frPyObjects([polygons], input_scales[image_id]['h'], input_scales[image_id]['w'])
-                rle = cocomask.merge(rles)
-                m = cocomask.decode(rle)
-                rle_new = encode_mask(m.astype(np.uint8))
-
-                seg = {
-                    'image_id': image_id,
-                    'category_id': cat_id,
-                    'score': 1,
-                    'segmentation': rle_new
-                }
-                segments.append(seg)
-
+        # print('Start to prepare eval results')
+        # print(len(all_segments))
+        # # For the purpose of debugging only
         # for image_id in all_segments:
-        #     for cls_ind in all_segments[image_id]:
-        #         category_id = self.valid_ids[cls_ind - 1]
-        #         for segm in all_segments[image_id][cls_ind]:  # decode the segments to RLE
-        #             poly = segm[:-5].reshape((-1, 2))
-        #             # poly[:, 0] = np.clip(poly[:, 0], 0, input_scales[image_id]['w'] - 1)
-        #             # poly[:, 1] = np.clip(poly[:, 1], 0, input_scales[image_id]['h'] - 1)
+        #     ann_ids = self.coco.getAnnIds(imgIds=[image_id])
+        #     annotations = self.coco.loadAnns(ids=ann_ids)
+        #     img = self.coco.loadImgs(image_id)[0]
+        #     w_img = int(img['width'])
+        #     h_img = int(img['height'])
+        #     for anno in annotations:
+        #         if type(anno['segmentation']) != list:
+        #             continue
         #
-        #             x1, y1, x2, y2 = segm[-5:-1]
-        #             bbox = [x1, y1, x2 - x1, y2 - y1]
-        #             bbox_out = list(map(lambda x: float("{:.2f}".format(x)), bbox))
+        #         cat_id = anno['category_id']
+        #         rles = cocomask.frPyObjects(anno['segmentation'], h_img, w_img)
+        #         rle = cocomask.merge(rles)
+        #         m = cocomask.decode(rle)
+        #         rle_new = encode_mask(m.astype(np.uint8))
         #
-        #             poly = np.ndarray.flatten(poly).tolist()
-        #
-        #             rles = cocomask.frPyObjects([poly], input_scales[image_id]['h'], input_scales[image_id]['w'])
-        #             rle = cocomask.merge(rles)
-        #             m = cocomask.decode(rle)
-        #             rle_new = encode_mask(m.astype(np.uint8))
-        #             score = segm[-1]
-        #
-        #             detection = {"image_id": int(image_id),
-        #                          "category_id": int(category_id),
-        #                          'segmentation': rle_new,
-        #                          'bbox': bbox_out,
-        #                          "score": float("{:.2f}".format(score))}
-        #             segments.append(detection)
+        #         seg = {
+        #             'image_id': image_id,
+        #             'category_id': cat_id,
+        #             'score': 1,
+        #             'bbox': anno['bbox'],
+        #             'segmentation': rle_new
+        #         }
+        #         segments.append(seg)
+
+        for image_id in all_segments:
+            img = self.coco.loadImgs(image_id)[0]
+            w_img = int(img['width'])
+            h_img = int(img['height'])
+            for cls_ind in all_segments[image_id]:
+                category_id = self.valid_ids[cls_ind - 1]
+                for segm in all_segments[image_id][cls_ind]:  # decode the segments to RLE
+                    poly = segm[:-5].reshape((-1, 2))
+                    # poly[:, 0] = np.clip(poly[:, 0], 0, input_scales[image_id]['w'] - 1)
+                    # poly[:, 1] = np.clip(poly[:, 1], 0, input_scales[image_id]['h'] - 1)
+
+                    x1, y1, x2, y2 = segm[-5:-1]
+                    bbox = [x1, y1, x2 - x1, y2 - y1]
+                    bbox_out = list(map(lambda x: float("{:.2f}".format(x)), bbox))
+
+                    poly = np.ndarray.flatten(poly).tolist()
+
+                    rles = cocomask.frPyObjects([poly], h_img, w_img)
+                    rle = cocomask.merge(rles)
+                    m = cocomask.decode(rle)
+                    rle_new = encode_mask(m.astype(np.uint8))
+                    score = segm[-1]
+
+                    detection = {"image_id": int(image_id),
+                                 "category_id": int(category_id),
+                                 'segmentation': rle_new,
+                                 'bbox': bbox_out,
+                                 "score": float("{:.2f}".format(score))}
+                    segments.append(detection)
+
         return segments
 
     def run_eval(self, results, input_scales, save_dir=None):
