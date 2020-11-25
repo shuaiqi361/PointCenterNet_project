@@ -16,8 +16,8 @@ def get_connected_polygon_using_mask(polygons, img_hw, n_vertices, closing_max_k
             len_poly = len(poly)
             vertices = np.zeros((1, len_poly // 2, 2), dtype=np.int32)
             for i in range(len_poly // 2):
-                vertices[0, i, 0] = int(poly[2 * i])
-                vertices[0, i, 1] = int(poly[2 * i + 1])
+                vertices[0, i, 0] = int(np.round(poly[2 * i]))
+                vertices[0, i, 1] = int(np.round(poly[2 * i + 1]))
             cv2.drawContours(bg, vertices, color=255, contourIdx=-1, thickness=-1)
 
         pads = 5
@@ -42,8 +42,8 @@ def get_connected_polygon_using_mask(polygons, img_hw, n_vertices, closing_max_k
             len_poly = len(poly)
             vertices = np.zeros((1, len_poly // 2, 2), dtype=np.int32)
             for i in range(len_poly // 2):
-                vertices[0, i, 0] = int(poly[2 * i])
-                vertices[0, i, 1] = int(poly[2 * i + 1])
+                vertices[0, i, 0] = int(np.round(poly[2 * i]))
+                vertices[0, i, 1] = int(np.round(poly[2 * i + 1]))
             cv2.drawContours(bg, vertices, color=255, contourIdx=-1, thickness=-1)
 
         obj_contours, _ = cv2.findContours(bg, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
