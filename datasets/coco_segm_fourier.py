@@ -263,7 +263,7 @@ class COCOSEGMFOURIER(data.Dataset):
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 fourier_results = torch.fft(torch.FloatTensor(centered_shape), signal_ndim=1) / 32.
                 real_[k] = fourier_results[:, 0]
-                imaginary_[k] - fourier_results[:, 1]
+                imaginary_[k] = fourier_results[:, 1]
                 w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
                           mass_center[0] - bbox[0], bbox[2] - mass_center[0]  # [top, bottom, left, right] distance
                 regs[k] = obj_c - obj_c_int  # discretization error
