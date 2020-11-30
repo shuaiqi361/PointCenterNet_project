@@ -18,7 +18,7 @@ def chamfer_distance_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1
     return loss + sparsity * loss_sparsity
 
 
-def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask):
+def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask, sparsity=0.1):
     # gt_shape size: (bs, 128, 64)
     norm_factor = torch.sqrt(gt_w_h[:, :, 0] * gt_w_h[:, :, 1])[:, :, None] + 1e-4
     mask = mask[:, :, None].expand_as(gt_shapes).float()
@@ -30,23 +30,51 @@ def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask):
 
     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
 
-    return loss + 0.05 * loss_sparsity
+    return loss + sparsity * loss_sparsity
 
 
-def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask):
-    # print('In cmm loss:')
-    # for c in pred_codes:
-    #     print('pred_codes: ', c.size())
-    # for c in pred_shapes:
-    #     print('pred_shapes: ', c.size())
-    # print('gt shape and mask size: ', gt_shapes.size(), mask.size())
+def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1):
+    batch_size, max_obj, n_dims = pred_shapes.size()
     mask = mask[:, :, None].expand_as(gt_shapes).float()
-    # print('After expand_as gt shape and mask size: ', gt_shapes.size(), mask.size())
-    loss_cmm = sum(F.smooth_l1_loss(r * mask, gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) for r in pred_shapes)
+    cmm_gt_shapes = torch.zeros(size=gt_shapes.size(), device=gt_shapes.device)
+    for bs in range(batch_size):
+        for i in range(max_obj): # max loop should be 128, which is the maximum number of objects
+            if mask[bs, i, 0] == 0:
+                break  # enumerated all objects of the current image
+            else:
+                cmm_loss = torch.inf
+                roll_index = 0
+                for j in range(n_dims // 2):
+                    rolled_tensor = torch.roll(gt_shapes[bs, i, :], shifts=2 * j)
+                    cmm_dist = torch.sum((rolled_tensor - pred_shapes) ** 2)
+                    if cmm_dist < cmm_loss:
+                        roll_index = int(j * 2)
+                        cmm_loss = cmm_dist
+
+                cmm_gt_shapes[bs, i, :] = torch.roll(gt_shapes[bs, i, :], shifts=roll_index)
+
+    loss_cmm = sum(
+        F.smooth_l1_loss(r * mask, cmm_gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) for r in pred_shapes)
 
     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
-    # print('Loss items: ', loss_cmm.item() + 0.1 * loss_sparsity.item())
-    return loss_cmm + 0.1 * loss_sparsity
+
+    return loss_cmm + sparsity * loss_sparsity
+
+
+# def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask):
+#     # print('In cmm loss:')
+#     # for c in pred_codes:
+#     #     print('pred_codes: ', c.size())
+#     # for c in pred_shapes:
+#     #     print('pred_shapes: ', c.size())
+#     # print('gt shape and mask size: ', gt_shapes.size(), mask.size())
+#     mask = mask[:, :, None].expand_as(gt_shapes).float()
+#     # print('After expand_as gt shape and mask size: ', gt_shapes.size(), mask.size())
+#     loss_cmm = sum(F.smooth_l1_loss(r * mask, gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) for r in pred_shapes)
+#
+#     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
+#     # print('Loss items: ', loss_cmm.item() + 0.1 * loss_sparsity.item())
+#     return loss_cmm + 0.1 * loss_sparsity
 
 
 def _neg_loss_slow(preds, targets):
@@ -114,7 +142,8 @@ def norm_reg_loss(regs, gt_regs, mask):
     _, _, len_vec = gt_regs.shape
     mask = mask[:, :, None].expand_as(gt_regs).float()
     norm_gt_codes = torch.norm(gt_regs, dim=2, keepdim=True) + 1e-4
-    loss = sum(torch.sum(F.smooth_l1_loss(r * mask, gt_regs * mask, reduction='none') * len_vec / norm_gt_codes) / (mask.sum() + 1e-4) for r in regs)
+    loss = sum(torch.sum(F.smooth_l1_loss(r * mask, gt_regs * mask, reduction='none') * len_vec / norm_gt_codes) / (
+                mask.sum() + 1e-4) for r in regs)
     return loss / len(regs)
 
 

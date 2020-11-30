@@ -132,7 +132,7 @@ class ShapeResNet(nn.Module):
             # heatmap layers
             self.hmap = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
-                                      nn.Conv2d(head_conv, num_classes, kernel_size=1, bias=True))
+                                      nn.Conv2d(head_conv, self.num_classes, kernel_size=1, bias=True))
             self.hmap[-1].bias.data.fill_(-2.19)
             # regression layers
             self.regs = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
@@ -144,17 +144,18 @@ class ShapeResNet(nn.Module):
             self.offsets_p1 = nn.Sequential(DCN(64, head_conv, kernel_size=(3, 3), stride=1, padding=1,
                                                 dilation=1, deformable_groups=1),
                                       nn.ReLU(inplace=True),
-                                      nn.Conv2d(head_conv, 80, kernel_size=1, bias=True))
-            self.offsets_p2 = nn.Sequential(nn.Conv2d(80, 128, kernel_size=3, padding=1, bias=True),
+                                      nn.Conv2d(head_conv, self.num_classes, kernel_size=1, bias=True))
+            self.offsets_p2 = nn.Sequential(nn.Conv2d(self.num_classes, self.num_classes * 2, kernel_size=3,
+                                                      padding=1, bias=True),
                                             nn.ReLU(inplace=True),
-                                            nn.Conv2d(128, 64, kernel_size=1, bias=True))
+                                            nn.Conv2d(self.num_classes * 2, 64, kernel_size=1, bias=True))
             self.codes = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, 64, kernel_size=1, bias=True))
         else:
             raise NotImplementedError
             # heatmap layers
-            self.hmap = nn.Conv2d(64, num_classes, kernel_size=1, bias=True)
+            self.hmap = nn.Conv2d(64, self.num_classes, kernel_size=1, bias=True)
             # regression layers
             self.regs = nn.Conv2d(64, 2, kernel_size=1, bias=True)
             self.w_h_ = nn.Conv2d(64, 2, kernel_size=1, bias=True)
