@@ -30,11 +30,11 @@ import torch.utils.data
 from datasets.coco import COCO_MEAN, COCO_STD, COCO_NAMES
 from datasets.detrac import DETRAC_MEAN, DETRAC_STD, DETRAC_NAMES
 
-from nets.hourglass_segm import exkp
+from nets.hourglass_segm_shift_code import exkp
 
 from utils.utils import load_demo_model
 from utils.image import transform_preds, get_affine_transform
-from utils.post_process import ctsegm_shift_decode
+from utils.post_process import ctsegm_shift_code_decode
 
 from lib.nms.nms import soft_nms
 
@@ -42,7 +42,7 @@ COCO_COLORS = sns.color_palette('hls', len(COCO_NAMES))
 DETRAC_COLORS = sns.color_palette('hls', len(DETRAC_NAMES))
 
 # Training settings
-parser = argparse.ArgumentParser(description='centernet_traffic')
+parser = argparse.ArgumentParser(description='centernet shift code segmentation')
 
 parser.add_argument('--root_dir', type=str, default='./')
 parser.add_argument('--data_dir', type=str, default='./')
@@ -175,14 +175,17 @@ def main():
             for cnt in range(len(annt['segmentation'])):
                 polys = np.array(annt['segmentation'][cnt]).reshape((-1, 2))
                 cv2.polylines(img_original, [polys.astype(np.int32)], True, (10, 10, 255), thickness=2)
+                # cv2.drawContours(img_original, [polys.astype(np.int32)], contourIdx=-1, color=(10, 10, 255), thickness=-1)
 
-            cv2.polylines(img_connect, [indexed_shape.astype(np.int32)], True, (150, 10, 255), thickness=2)
+            cv2.polylines(img_connect, [indexed_shape.astype(np.int32)], True, (10, 10, 255), thickness=2)
+            # cv2.drawContours(img_connect, [indexed_shape.astype(np.int32)], contourIdx=-1, color=(10, 10, 255), thickness=-1)
 
             learned_val_codes, _ = fast_ista(centered_shape.reshape((1, -1)), dictionary,
-                                     lmbda=0.1, max_iter=60)
+                                             lmbda=0.1, max_iter=60)
             recon_contour = np.matmul(learned_val_codes, dictionary).reshape((-1, 2))
             recon_contour = recon_contour + bbox_center
-            cv2.polylines(img_recon, [recon_contour.astype(np.int32)], True, (10, 255, 10), thickness=2)
+            cv2.polylines(img_recon, [recon_contour.astype(np.int32)], True, (10, 10, 255), thickness=2)
+            # cv2.drawContours(img_recon, [recon_contour.astype(np.int32)], contourIdx=-1, color=(10, 10, 255), thickness=-1)
 
             # plot gt mean and std
             # image = cv2.imread(image_path)
@@ -249,9 +252,9 @@ def main():
                 output = model(imgs[scale]['image'])[-1]
                 # segms, codes_ = ctsegm_scaled_decode_debug(*output, torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
                 #                             K=cfg.test_topk)
-                segms = ctsegm_shift_decode(*output, torch.from_numpy(dictionary.astype(np.float32)).to(
-                    cfg.device),
-                                                          K=cfg.test_topk)
+                segms = ctsegm_shift_code_decode(*output,
+                                                 torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
+                                                 K=cfg.test_topk)
                 segms = segms.detach().cpu().numpy().reshape(1, -1, segms.shape[2])[0]
                 # codes_ = codes_.detach().cpu().numpy().reshape(1, -1, codes_.shape[2])[0]
 
@@ -300,12 +303,14 @@ def main():
 
             # Use opencv functions to output a video
             output_image = original_image
+            blend_mask = np.zeros(shape=output_image.shape, dtype=np.uint8)
+            # print(blend_mask.shape)
 
             for lab in segms_and_scores:
                 for idx in range(len(segms_and_scores[lab])):
                     res = segms_and_scores[lab][idx]
                     # c_ = codes_and_scores[lab][idx]
-                # for res in segms_and_scores[lab]:
+                    # for res in segms_and_scores[lab]:
                     contour, bbox, score = res[:-5], res[-5:-1], res[-1]
                     bbox[0] = np.clip(bbox[0], 0, w_img)
                     bbox[1] = np.clip(bbox[1], 0, h_img)
@@ -315,11 +320,17 @@ def main():
                         text = names[lab]  # + ' %.2f' % score
                         # label_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_COMPLEX, thickness=2, fontScale=0.5)
                         polygon = contour.reshape((-1, 2))
+                        # print('Shape: Poly -- ', polygon.shape)
+                        # print(polygon)
+                        polygon[:, 0] = np.clip(polygon[:, 0], 0, w_img - 1)
+                        polygon[:, 1] = np.clip(polygon[:, 1], 0, h_img - 1)
 
                         # use bb tools to draw predictions
                         color = random.choice(COLOR_WORLD)
-                        bb.add(output_image, bbox[0], bbox[1], bbox[2], bbox[3], text, color)
-                        cv2.polylines(output_image, [polygon.astype(np.int32)], True, RGB_DICT[color], thickness=2)
+                        # bb.add(output_image, bbox[0], bbox[1], bbox[2], bbox[3], text, color)
+                        cv2.polylines(output_image, [polygon.astype(np.int32)], True, RGB_DICT[color], thickness=1)
+                        cv2.drawContours(blend_mask, [polygon.astype(np.int32)], contourIdx=-1, color=RGB_DICT[color],
+                                         thickness=-1)
 
                         # color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
                         # contour_mean = np.mean(polygon, axis=0)
@@ -352,11 +363,13 @@ def main():
                         # plt.show()
 
             value = [255, 255, 255]
+            dst_img = cv2.addWeighted(output_image, 0.5, blend_mask, 0.5, 0)
+            dst_img[blend_mask == 0] = output_image[blend_mask == 0]
             img_original = cv2.copyMakeBorder(img_original, 0, 0, 0, 10, cv2.BORDER_CONSTANT, None, value)
             img_connect = cv2.copyMakeBorder(img_connect, 0, 0, 10, 10, cv2.BORDER_CONSTANT, None, value)
             img_recon = cv2.copyMakeBorder(img_recon, 0, 0, 10, 10, cv2.BORDER_CONSTANT, None, value)
-            output_image = cv2.copyMakeBorder(output_image, 0, 0, 10, 0, cv2.BORDER_CONSTANT, None, value)
-            im_cat = np.concatenate((img_original, img_connect, img_recon, output_image), axis=1)
+            dst_img = cv2.copyMakeBorder(dst_img, 0, 0, 10, 0, cv2.BORDER_CONSTANT, None, value)
+            im_cat = np.concatenate((img_original, img_connect, img_recon, dst_img), axis=1)
             # im_cat = np.concatenate((img_original, img_connect, img_recon), axis=1)
             cv2.imshow('GT:Resample:Recons:Predict', im_cat)
             if cv2.waitKey() & 0xFF == ord('q'):

@@ -1,6 +1,21 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from chamferdist import ChamferDistance
+
+
+def chamfer_distance_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1):
+    mask = mask[:, :, None].expand_as(gt_shapes).float()  # mask has been expanded to calculate the mean of 32 points
+    loss = 0
+    for r in pred_shapes:
+        target_shape = (gt_shapes * mask).view(-1, 32, 2)
+        shape_ = (r * mask).view(-1, 32, 2)
+        loss += (ChamferDistance(target_shape, shape_, reduction='sum')
+                 + ChamferDistance(shape_, target_shape, reduction='sum')) / (mask.sum() + 1e-4)
+
+    loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
+
+    return loss + sparsity * loss_sparsity
 
 
 def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask):
