@@ -362,6 +362,7 @@ def ctsegm_code_n_offset_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, 
                         xs + w_h_[..., 3:4],
                         ys + w_h_[..., 1:2]], dim=2)
 
+    offsets_ = _tranpose_and_gather_feature(offsets_, inds)
     segms = torch.matmul(codes_, dictionary)
     segms = segms.view(batch, K, 32, 2) + offsets_.view(batch, K, 32, 2) + \
             torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)

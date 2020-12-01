@@ -166,14 +166,15 @@ def main():
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
             codes_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_]
             offsets_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets_]
-            shapes_ = torch.matmul(codes_, dict_tensor) + offsets_
+            shapes_ = [torch.matmul(c, dict_tensor) + o for c in codes_ for o in offsets_]
+            # shapes_ = torch.matmul(codes_, dict_tensor) + offsets_
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             codes_loss = norm_reg_loss(codes_, batch['codes'], batch['ind_masks'])
             shapes_loss = chamfer_distance_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'])
-            loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + \
+            loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + \
                    cfg.shape_loss_weight * shapes_loss
 
             optimizer.zero_grad()
