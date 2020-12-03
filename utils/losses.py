@@ -38,6 +38,13 @@ def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask, 
 def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1, roll=True):
     batch_size, max_obj, n_dims = gt_shapes.size()
     mask = mask[:, :, None].expand_as(gt_shapes).float()
+    scale_gt_shapes = torch.zeros(size=(batch_size, max_obj, 4), device=gt_shapes.device)
+    scale_gt_shapes[:, :, 0] = torch.min(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 0], dim=-1)
+    scale_gt_shapes[:, :, 1] = torch.min(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 1], dim=-1)
+    scale_gt_shapes[:, :, 2] = torch.max(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 0], dim=-1)
+    scale_gt_shapes[:, :, 3] = torch.max(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 1], dim=-1)
+    scale_norm = torch.sqrt((scale_gt_shapes[:, :, 2] - scale_gt_shapes[:, :, 0]) ** 2 +
+                            (scale_gt_shapes[:, :, 3] - scale_gt_shapes[:, :, 1]) ** 2)  # .view(batch_size, max_obj, 1)
     if roll:
         cmm_gt_shapes = torch.zeros(size=gt_shapes.size(), device=gt_shapes.device)
         for bs in range(batch_size):
@@ -57,10 +64,10 @@ def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1,
                     cmm_gt_shapes[bs, i, :] = torch.roll(gt_shapes[bs, i, :], shifts=roll_index)
 
         loss_cmm = sum(
-            F.smooth_l1_loss(r * mask, cmm_gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) for r in pred_shapes)
+            F.smooth_l1_loss(r * mask, cmm_gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) / scale_norm for r in pred_shapes)
     else:
         loss_cmm = sum(
-            F.smooth_l1_loss(r * mask, gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) for r in pred_shapes)
+            F.smooth_l1_loss(r * mask, gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) / scale_norm for r in pred_shapes)
             
     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
 
