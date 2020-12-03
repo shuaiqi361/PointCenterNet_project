@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from chamferdist import ChamferDistance
+import math
 
 
 def chamfer_distance_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1):
@@ -16,7 +17,7 @@ def chamfer_distance_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1
 
     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
 
-    return loss + sparsity * loss_sparsity
+    return loss / 2. + sparsity * loss_sparsity
 
 
 def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask, sparsity=0.1):
@@ -34,29 +35,33 @@ def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask, 
     return loss + sparsity * loss_sparsity
 
 
-def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1):
-    batch_size, max_obj, n_dims = pred_shapes.size()
+def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1, roll=True):
+    batch_size, max_obj, n_dims = gt_shapes.size()
     mask = mask[:, :, None].expand_as(gt_shapes).float()
-    cmm_gt_shapes = torch.zeros(size=gt_shapes.size(), device=gt_shapes.device)
-    for bs in range(batch_size):
-        for i in range(max_obj): # max loop should be 128, which is the maximum number of objects
-            if mask[bs, i, 0] == 0:
-                break  # enumerated all objects of the current image
-            else:
-                cmm_loss = torch.inf
-                roll_index = 0
-                for j in range(n_dims // 2):
-                    rolled_tensor = torch.roll(gt_shapes[bs, i, :], shifts=2 * j)
-                    cmm_dist = torch.sum((rolled_tensor - pred_shapes) ** 2)
-                    if cmm_dist < cmm_loss:
-                        roll_index = int(j * 2)
-                        cmm_loss = cmm_dist
+    if roll:
+        cmm_gt_shapes = torch.zeros(size=gt_shapes.size(), device=gt_shapes.device)
+        for bs in range(batch_size):
+            for i in range(max_obj): # max loop should be 128, which is the maximum number of objects
+                if mask[bs, i, 0] == 0:
+                    break  # enumerated all objects of the current image
+                else:
+                    cmm_loss = math.inf
+                    roll_index = 0
+                    for j in range(n_dims // 2):
+                        rolled_tensor = torch.roll(gt_shapes[bs, i, :], shifts=2 * j)
+                        cmm_dist = torch.sum((rolled_tensor - pred_shapes[-1]) ** 2)
+                        if cmm_dist < cmm_loss:
+                            roll_index = int(j * 2)
+                            cmm_loss = cmm_dist
 
-                cmm_gt_shapes[bs, i, :] = torch.roll(gt_shapes[bs, i, :], shifts=roll_index)
+                    cmm_gt_shapes[bs, i, :] = torch.roll(gt_shapes[bs, i, :], shifts=roll_index)
 
-    loss_cmm = sum(
-        F.smooth_l1_loss(r * mask, cmm_gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) for r in pred_shapes)
-
+        loss_cmm = sum(
+            F.smooth_l1_loss(r * mask, cmm_gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) for r in pred_shapes)
+    else:
+        loss_cmm = sum(
+            F.smooth_l1_loss(r * mask, gt_shapes * mask, reduction='sum') / (mask.sum() + 1e-4) for r in pred_shapes)
+            
     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
 
     return loss_cmm + sparsity * loss_sparsity

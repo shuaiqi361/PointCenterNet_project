@@ -26,7 +26,7 @@ from nets.resdcn_code_n_offset import get_pose_net
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, chamfer_distance_loss
+from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, chamfer_distance_loss, contour_mapping_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_code_n_offset_decode
 
@@ -159,6 +159,8 @@ def main():
                     batch[k] = batch[k].to(device=cfg.device, non_blocking=True)
 
             dict_tensor = torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True)
+            dict_tensor.requires_grad=False
+
             outputs = model(batch['image'])
             hmap, regs, w_h_, codes_, offsets_ = zip(*outputs)
 
@@ -173,7 +175,7 @@ def main():
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             codes_loss = norm_reg_loss(codes_, batch['codes'], batch['ind_masks'])
-            shapes_loss = chamfer_distance_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'])
+            shapes_loss = contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'], roll=False)
             loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + \
                    cfg.shape_loss_weight * shapes_loss
 
