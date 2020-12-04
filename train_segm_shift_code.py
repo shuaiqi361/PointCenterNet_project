@@ -22,7 +22,7 @@ from datasets.coco_segm_shift_code import COCOSEGMSHIFT, COCO_eval_segm_shift
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass_segm_shift_code import get_hourglass
-from nets.resdcn import get_pose_net
+from nets.resdcn_shift_code import get_pose_net
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -165,7 +165,7 @@ def main():
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             codes_loss = norm_reg_loss(codes_, batch['codes'], batch['ind_masks'])
             # codes_loss = mse_reg_loss(codes_, batch['codes'], batch['ind_masks'])
-            loss = hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss
+            loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss
 
             optimizer.zero_grad()
             loss.backward()

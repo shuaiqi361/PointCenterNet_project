@@ -275,7 +275,7 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 5:
             val_map(epoch)
             print(saver.save(model.module.state_dict(), 'checkpoint'))
         lr_scheduler.step(epoch)

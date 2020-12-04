@@ -141,18 +141,17 @@ class ShapeResNet(nn.Module):
             self.w_h_ = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
                                       nn.Conv2d(head_conv, 4, kernel_size=1, bias=True))
-            self.offsets = nn.Sequential(DCN(64, head_conv, kernel_size=(3, 3), stride=1, padding=1,
-                                                dilation=1, deformable_groups=1),
-                                      nn.ReLU(inplace=True),
-                                      nn.Conv2d(head_conv, 64, kernel_size=1, bias=True))
+            # self.offsets = nn.Sequential(DCN(64, head_conv, kernel_size=(3, 3), stride=1, padding=1,
+            #                                     dilation=1, deformable_groups=1),
+            #                           nn.ReLU(inplace=True),
+            #                           nn.Conv2d(head_conv, 64, kernel_size=1, bias=True))
             # self.offsets_p1 = nn.Sequential(DCN(64, head_conv, kernel_size=(3, 3), stride=1, padding=1,
             #                                     dilation=1, deformable_groups=1),
             #                           nn.ReLU(inplace=True),
             #                           nn.Conv2d(head_conv, self.num_classes, kernel_size=1, bias=True))
-            # self.offsets_p2 = nn.Sequential(nn.Conv2d(self.num_classes, self.num_classes * 2, kernel_size=3,
-            #                                           padding=1, bias=True),
-            #                                 nn.ReLU(inplace=True),
-            #                                 nn.Conv2d(self.num_classes * 2, 64, kernel_size=1, bias=True))
+            self.offsets = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
+                                            nn.ReLU(inplace=True),
+                                            nn.Conv2d(head_conv, 64, kernel_size=1, bias=True))
             self.codes = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, 64, kernel_size=1, bias=True))
