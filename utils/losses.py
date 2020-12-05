@@ -35,7 +35,7 @@ def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask, 
     return loss + sparsity * loss_sparsity
 
 
-def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1, roll=True):
+def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.01, roll=True):
     batch_size, max_obj, n_dims = gt_shapes.size()
     mask = mask[:, :, None].expand_as(gt_shapes).float()
     scale_gt_shapes = torch.zeros(size=(batch_size, max_obj, 4), device=gt_shapes.device)
