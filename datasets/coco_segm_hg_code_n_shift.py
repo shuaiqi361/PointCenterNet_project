@@ -341,7 +341,7 @@ class COCO_eval_segm_shift(COCOSEGMSHIFT):
 
         return img_id, out
 
-    def convert_eval_format(self, all_segments, input_scales):
+    def convert_eval_format(self, all_segments):
         # all_bboxes: num_samples x num_classes x 5
         segments = []
         for image_id in all_segments:
@@ -375,8 +375,8 @@ class COCO_eval_segm_shift(COCOSEGMSHIFT):
                     segments.append(detection)
         return segments
 
-    def run_eval(self, results, input_scales, save_dir=None):
-        segments = self.convert_eval_format(results, input_scales)
+    def run_eval(self, results, save_dir=None):
+        segments = self.convert_eval_format(results)
 
         if save_dir is not None:
             result_json = os.path.join(save_dir, "segm_shift_code_results.json")
