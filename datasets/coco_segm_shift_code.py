@@ -207,6 +207,7 @@ class COCOSEGMSHIFT(data.Dataset):
         img = img.transpose(2, 0, 1)  # from [H, W, C] to [C, H, W]
 
         trans_fmap = get_affine_transform(center, scale, 0, [self.fmap_size['w'], self.fmap_size['h']])
+        # image_show = cv2.warpAffine(image_show, trans_fmap, (self.fmap_size['w'], self.fmap_size['h']))
 
         hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
         w_h_ = np.zeros((self.max_objs, 4), dtype=np.float32)  # width and height of the shape
@@ -223,15 +224,15 @@ class COCOSEGMSHIFT(data.Dataset):
                 for m in range(self.n_vertices):
                     shape[2 * m] = width - shape[2 * m] - 1
 
-            bbox[:2] = affine_transform(bbox[:2], trans_fmap)
-            bbox[2:] = affine_transform(bbox[2:], trans_fmap)
+            bbox[:2] = affine_transform(affine_transform(bbox[:2], trans_img), trans_fmap)
+            bbox[2:] = affine_transform(affine_transform(bbox[2:], trans_img), trans_fmap)
             bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.fmap_size['w'] - 1)
             bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.fmap_size['h'] - 1)
             h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
 
             # generate gt shape mean and std from contours
             for m in range(self.n_vertices):  # apply scale and crop transform to shapes
-                shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_fmap)
+                shape[2 * m:2 * m + 2] = affine_transform(affine_transform(shape[2 * m:2 * m + 2], trans_img), trans_fmap)
 
             shape_clipped = np.reshape(shape, (self.n_vertices, 2))
 
@@ -279,6 +280,17 @@ class COCOSEGMSHIFT(data.Dataset):
         # canvas[self.fmap_size['h']:, self.fmap_size['w']:, :] = np.tile(np.expand_dims(hmap[3], 2), (1, 1, 3))
         # print(w_h_[0], regs[0])
         # cv2.imshow('hmap', canvas)
+        # cv2.waitKey()
+        # -----------------------------------debug---------------------------------
+        # -----------------------------------debug---------------------------------
+        # image_show = img.copy()
+        # for bbox, label, shape in zip(bboxes, labels, shapes):
+        #     cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 1)
+        #     cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        #     # print(shape, shape.shape)
+        #     # cv2.polylines(image_show, [shape.astype(np.int32).reshape(self.n_vertices, 2)], True, (0, 0, 255), thickness=1)
+        # cv2.imshow('img', image_show)
         # cv2.waitKey()
         # -----------------------------------debug---------------------------------
 
@@ -407,9 +419,7 @@ if __name__ == '__main__':
     import pickle
 
     dataset = COCOSEGMSHIFT('/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17',
-                            '/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17/my_annotation/train_instance_v32.json',
-                            '/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17/my_annotation/train_norm_shape_v32.json',
-                            '/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17/dictionary/train_dict_v32_n64_a0.01.npy',
+                            '/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/dictionary/train_dict_v32_n64_a0.01.npy',
                             'train')
     # for d in dataset:
     #   b1 = d

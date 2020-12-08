@@ -76,7 +76,7 @@ class COCOSEGM(data.Dataset):
         self.split = split
         self.dictionary_file = dictionary_file
         self.data_dir = data_dir
-        self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
+        self.img_dir = os.path.join(self.data_dir, 'images/%s2017' % split)
         if split == 'test':
             self.annot_path = os.path.join(self.data_dir, 'annotations', 'image_info_test-dev2017.json')
         else:
@@ -184,15 +184,15 @@ class COCOSEGM(data.Dataset):
         # -----------------------------------debug---------------------------------
         # image_show = img.copy()
         # for bbox, label in zip(bboxes, labels):
-        #   if flipped:
-        #     bbox[[0, 2]] = width - bbox[[2, 0]] - 1
-        #   bbox[:2] = affine_transform(bbox[:2], trans_img)
-        #   bbox[2:] = affine_transform(bbox[2:], trans_img)
-        #   bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
-        #   bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
-        #   cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
-        #   cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
-        #               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        #     if flipped:
+        #         bbox[[0, 2]] = width - bbox[[2, 0]] - 1
+        #     bbox[:2] = affine_transform(bbox[:2], trans_img)
+        #     bbox[2:] = affine_transform(bbox[2:], trans_img)
+        #     bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
+        #     bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
+        #     cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
+        #     cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         # cv2.imshow('img', image_show)
         # cv2.waitKey()
         # -----------------------------------debug---------------------------------
@@ -207,6 +207,7 @@ class COCOSEGM(data.Dataset):
         img = img.transpose(2, 0, 1)  # from [H, W, C] to [C, H, W]
 
         trans_fmap = get_affine_transform(center, scale, 0, [self.fmap_size['w'], self.fmap_size['h']])
+        # image_show = cv2.warpAffine(image_show, trans_fmap, (self.fmap_size['w'], self.fmap_size['h']))
 
         hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
         w_h_ = np.zeros((self.max_objs, 4), dtype=np.float32)  # regression of 4 offsets to the center of mass
@@ -223,15 +224,15 @@ class COCOSEGM(data.Dataset):
                 for m in range(self.n_vertices):
                     shape[2 * m] = width - shape[2 * m] - 1
 
-            bbox[:2] = affine_transform(bbox[:2], trans_fmap)
-            bbox[2:] = affine_transform(bbox[2:], trans_fmap)
+            bbox[:2] = affine_transform(affine_transform(bbox[:2], trans_img), trans_fmap)
+            bbox[2:] = affine_transform(affine_transform(bbox[2:], trans_img), trans_fmap)
             bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.fmap_size['w'] - 1)
             bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.fmap_size['h'] - 1)
             h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
 
             # generate gt shape mean and std from contours
             for m in range(self.n_vertices):  # apply scale and crop transform to shapes
-                shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_fmap)
+                shape[2 * m:2 * m + 2] = affine_transform(affine_transform(shape[2 * m:2 * m + 2], trans_img), trans_fmap)
 
             shape_clipped = np.reshape(shape, (self.n_vertices, 2))
 
@@ -280,6 +281,14 @@ class COCOSEGM(data.Dataset):
         # print(w_h_[0], regs[0])
         # cv2.imshow('hmap', canvas)
         # cv2.waitKey()
+        # -----------------------------------debug---------------------------------
+        # -----------------------------------debug---------------------------------
+        # image_show = img.copy()
+        for bbox, label, shape in zip(bboxes, labels, shapes):
+            cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 1)
+            # cv2.polylines(image_show, [indexed_shape.astype(np.int32)], True, (0, 0, 255), thickness=2)
+        cv2.imshow('img', image_show)
+        cv2.waitKey()
         # -----------------------------------debug---------------------------------
 
         return {'image': img, 'codes': codes_, 'shapes': shapes_,
@@ -398,3 +407,23 @@ class COCOSEGMEVAL(COCOSEGM):
             out.append((img_id, {s: {k: torch.from_numpy(sample[s][k]).float()
             if k == 'image' else np.array(sample[s][k]) for k in sample[s]} for s in sample}))
         return out
+
+
+if __name__ == '__main__':
+    from tqdm import tqdm
+    import pickle
+
+    dataset = COCOSEGM('/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17',
+                       '/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/dictionary/train_dict_v32_n64_a0.01.npy',
+                       'train', padding=31)
+    # for d in dataset:
+    #   b1 = d
+    #   pass
+
+    # pass
+    train_loader = torch.utils.data.DataLoader(dataset, batch_size=1,
+                                               shuffle=False, num_workers=0,
+                                               pin_memory=False, drop_last=True)
+
+    for b in tqdm(train_loader):
+        pass
