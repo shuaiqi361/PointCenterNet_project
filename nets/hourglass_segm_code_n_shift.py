@@ -66,6 +66,27 @@ def make_kp_layer(cnv_dim, curr_dim, out_dim):
                          nn.Conv2d(curr_dim, out_dim, (1, 1)))
 
 
+def make_code_layer(cnv_dim, curr_dim, out_dim):
+    return nn.Sequential(convolution(3, cnv_dim, curr_dim, with_bn=False),
+                         nn.Conv2d(curr_dim, out_dim, (1, 1)),
+                         nn.BatchNorm2d(out_dim),
+                         nn.LeakyReLU(inplace=True),
+                         nn.Conv2d(out_dim, out_dim * 2, (3, 3), padding=1),
+                         nn.BatchNorm2d(out_dim * 2),
+                         nn.LeakyReLU(inplace=True),
+                         nn.Conv2d(out_dim * 2, out_dim, (1, 1)),
+                         )
+
+
+def make_offset_layer(cnv_dim, curr_dim, out_dim):
+    return nn.Sequential(convolution(3, cnv_dim, curr_dim, with_bn=False),
+                         nn.Conv2d(curr_dim, curr_dim, (3, 3), padding=1),
+                         nn.BatchNorm2d(curr_dim),
+                         nn.LeakyReLU(inplace=True),
+                         nn.Conv2d(curr_dim, out_dim, (1, 1)),
+                         )
+
+
 class kp_module(nn.Module):
     def __init__(self, n, dims, modules):
         super(kp_module, self).__init__()
@@ -136,8 +157,8 @@ class exkp(nn.Module):
         self.w_h_ = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 4) for _ in range(nstack)])
 
         # codes layers
-        self.codes_ = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 64) for _ in range(nstack)])
-        self.offsets_ = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 64) for _ in range(nstack)])
+        self.codes_ = nn.ModuleList([make_code_layer(cnv_dim, curr_dim, 64) for _ in range(nstack)])
+        self.offsets_ = nn.ModuleList([make_offset_layer(cnv_dim, curr_dim, 64) for _ in range(nstack)])
         # for c in self.codes_:
         #     c[-1].bias.data.fill_(1.0157)  # np.exp(1/64.), average sum of all components
 
