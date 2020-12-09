@@ -119,9 +119,9 @@ def main():
 
     Dataset_eval = COCO_eval_segm_shift if cfg.dataset == 'coco' else PascalVOC_eval
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
-                               'val', test_scales=[1.], test_flip=False)
+                               'val', test_scales=[1.], test_flip=False, padding=cfg.padding)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
-                                             shuffle=False, num_workers=1, pin_memory=False,
+                                             shuffle=False, num_workers=0, pin_memory=False,
                                              collate_fn=val_dataset.collate_fn)
 
     print('Creating model...')
@@ -259,7 +259,7 @@ def main():
                 results[img_id] = segms_and_scores
                 speed_list.append(end_image_time - start_image_time)
 
-        eval_results = val_dataset.run_eval(results, input_scales, save_dir=cfg.ckpt_dir)
+        eval_results = val_dataset.run_eval(results, save_dir=cfg.ckpt_dir)
         print(eval_results)
         summary_writer.add_scalar('val_mAP/mAP', eval_results[0], epoch)
         print('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))

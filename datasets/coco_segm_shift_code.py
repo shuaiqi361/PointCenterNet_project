@@ -87,7 +87,7 @@ class COCOSEGMSHIFT(data.Dataset):
         self.down_ratio = 4
         self.img_size = {'h': img_size, 'w': img_size}
         self.fmap_size = {'h': img_size // self.down_ratio, 'w': img_size // self.down_ratio}
-        self.rand_scales = np.arange(0.6, 1.4, 0.1)
+        self.rand_scales = np.arange(0.5, 1.4, 0.1)
         self.gaussian_iou = 0.7
 
         self.n_vertices = 32
@@ -161,17 +161,18 @@ class COCOSEGMSHIFT(data.Dataset):
             shapes = np.zeros((1, self.n_vertices * 2), dtype=np.float32)  # in xyxy format
 
         img = cv2.imread(img_path)
-        height, width = img.shape[0], img.shape[1]
+
+        height, width = img.shape[0], img.shape[1]  # the actual size of the image
         center = np.array([width / 2., height / 2.], dtype=np.float32)  # center of image
         scale = max(height, width) * 1.0
 
         flipped = False
         if self.split == 'train':
-            scale = scale * np.random.choice(self.rand_scales)
-            w_border = get_border(128, width)
-            h_border = get_border(128, height)
+            scale = scale * np.random.choice(self.rand_scales)  # size of the scaled max side length
+            w_border = get_border(160, width)
+            h_border = get_border(160, height)
             center[0] = np.random.randint(low=w_border, high=width - w_border)
-            center[1] = np.random.randint(low=h_border, high=height - h_border)
+            center[1] = np.random.randint(low=h_border, high=height - h_border)  # center of the cropping
 
             if np.random.random() < 0.5:
                 flipped = True
@@ -179,6 +180,7 @@ class COCOSEGMSHIFT(data.Dataset):
                 center[0] = width - center[0] - 1
 
         trans_img = get_affine_transform(center, scale, 0, [self.img_size['w'], self.img_size['h']])
+        # image_show = img.copy()
         img = cv2.warpAffine(img, trans_img, (self.img_size['w'], self.img_size['h']))
 
         # -----------------------------------debug---------------------------------
@@ -197,7 +199,7 @@ class COCOSEGMSHIFT(data.Dataset):
         # cv2.waitKey()
         # -----------------------------------debug---------------------------------
 
-        img = img.astype(np.float32) / 255.
+        img = img.astype(np.float32) / 255.  # images with universal sizes
 
         if self.split == 'train':
             color_aug(self.data_rng, img, self.eig_val, self.eig_vec)
@@ -224,15 +226,20 @@ class COCOSEGMSHIFT(data.Dataset):
                 for m in range(self.n_vertices):
                     shape[2 * m] = width - shape[2 * m] - 1
 
-            bbox[:2] = affine_transform(affine_transform(bbox[:2], trans_img), trans_fmap)
-            bbox[2:] = affine_transform(affine_transform(bbox[2:], trans_img), trans_fmap)
+            # bbox[:2] = affine_transform(affine_transform(bbox[:2], trans_img), trans_fmap)
+            # bbox[2:] = affine_transform(affine_transform(bbox[2:], trans_img), trans_fmap)
+            bbox[:2] = affine_transform(bbox[:2], trans_fmap)
+            bbox[2:] = affine_transform(bbox[2:], trans_fmap)
             bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.fmap_size['w'] - 1)
             bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.fmap_size['h'] - 1)
             h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
 
             # generate gt shape mean and std from contours
+            # for m in range(self.n_vertices):  # apply scale and crop transform to shapes
+            #     shape[2 * m:2 * m + 2] = affine_transform(affine_transform(shape[2 * m:2 * m + 2], trans_img), trans_fmap)
+
             for m in range(self.n_vertices):  # apply scale and crop transform to shapes
-                shape[2 * m:2 * m + 2] = affine_transform(affine_transform(shape[2 * m:2 * m + 2], trans_img), trans_fmap)
+                shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_fmap)
 
             shape_clipped = np.reshape(shape, (self.n_vertices, 2))
 
@@ -262,7 +269,7 @@ class COCOSEGMSHIFT(data.Dataset):
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 codes_[k], _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
-                                         lmbda=self.sparse_alpha, max_iter=60)
+                                         lmbda=self.sparse_alpha, max_iter=80)
                 w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
                           mass_center[0] - bbox[0], bbox[2] - mass_center[0]  # [top, bottom, left, right] distance
                 regs[k] = obj_c - obj_c_int  # discretization error
@@ -286,8 +293,8 @@ class COCOSEGMSHIFT(data.Dataset):
         # image_show = img.copy()
         # for bbox, label, shape in zip(bboxes, labels, shapes):
         #     cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 1)
-        #     cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
-        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        #     # cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
+        #     #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         #     # print(shape, shape.shape)
         #     # cv2.polylines(image_show, [shape.astype(np.int32).reshape(self.n_vertices, 2)], True, (0, 0, 255), thickness=1)
         # cv2.imshow('img', image_show)
@@ -303,8 +310,8 @@ class COCOSEGMSHIFT(data.Dataset):
 
 
 class COCO_eval_segm_shift(COCOSEGMSHIFT):
-    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False):
-        super(COCO_eval_segm_shift, self).__init__(data_dir, dictionary_file, split)
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=127):
+        super(COCO_eval_segm_shift, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales
         self.fix_size = fix_size
@@ -351,7 +358,7 @@ class COCO_eval_segm_shift(COCOSEGMSHIFT):
 
         return img_id, out
 
-    def convert_eval_format(self, all_segments, input_scales):
+    def convert_eval_format(self, all_segments):
         # all_bboxes: num_samples x num_classes x 5
         segments = []
         for image_id in all_segments:
@@ -385,8 +392,8 @@ class COCO_eval_segm_shift(COCOSEGMSHIFT):
                     segments.append(detection)
         return segments
 
-    def run_eval(self, results, input_scales, save_dir=None):
-        segments = self.convert_eval_format(results, input_scales)
+    def run_eval(self, results, save_dir=None):
+        segments = self.convert_eval_format(results)
 
         if save_dir is not None:
             result_json = os.path.join(save_dir, "segm_shift_code_results.json")
@@ -418,16 +425,21 @@ if __name__ == '__main__':
     from tqdm import tqdm
     import pickle
 
-    dataset = COCOSEGMSHIFT('/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17',
+    # dataset = COCOSEGMSHIFT('/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17',
+    #                         '/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/dictionary/train_dict_v32_n64_a0.01.npy',
+    #                         'train')
+
+    dataset = COCO_eval_segm_shift('/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17',
                             '/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/dictionary/train_dict_v32_n64_a0.01.npy',
-                            'train')
+                            'val', padding=31)
+
     # for d in dataset:
     #   b1 = d
     #   pass
 
     # pass
     train_loader = torch.utils.data.DataLoader(dataset, batch_size=1,
-                                               shuffle=False, num_workers=1,
+                                               shuffle=False, num_workers=0,
                                                pin_memory=False, drop_last=True)
 
     for b in tqdm(train_loader):

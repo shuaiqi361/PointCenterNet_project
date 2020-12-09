@@ -224,15 +224,15 @@ class COCOSEGM(data.Dataset):
                 for m in range(self.n_vertices):
                     shape[2 * m] = width - shape[2 * m] - 1
 
-            bbox[:2] = affine_transform(affine_transform(bbox[:2], trans_img), trans_fmap)
-            bbox[2:] = affine_transform(affine_transform(bbox[2:], trans_img), trans_fmap)
+            bbox[:2] = affine_transform(bbox[:2], trans_fmap)
+            bbox[2:] = affine_transform(bbox[2:], trans_fmap)
             bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.fmap_size['w'] - 1)
             bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.fmap_size['h'] - 1)
             h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
 
             # generate gt shape mean and std from contours
             for m in range(self.n_vertices):  # apply scale and crop transform to shapes
-                shape[2 * m:2 * m + 2] = affine_transform(affine_transform(shape[2 * m:2 * m + 2], trans_img), trans_fmap)
+                shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_fmap)
 
             shape_clipped = np.reshape(shape, (self.n_vertices, 2))
 
@@ -300,8 +300,8 @@ class COCOSEGM(data.Dataset):
 
 
 class COCOSEGMEVAL(COCOSEGM):
-    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False):
-        super(COCOSEGMEVAL, self).__init__(data_dir, dictionary_file, split)
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=127):
+        super(COCOSEGMEVAL, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales
         self.fix_size = fix_size
