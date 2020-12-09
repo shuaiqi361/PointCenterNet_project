@@ -22,7 +22,8 @@ from datasets.coco_segm_shift_code import COCOSEGMSHIFT, COCO_eval_segm_shift
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass_segm_shift_code import get_hourglass
-from nets.resdcn_shift_code import get_pose_net
+# from nets.resdcn_shift_code import get_pose_resdcn
+from nets.resnet_shift_code import get_pose_resnet
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -98,8 +99,12 @@ def main():
     print('Setting up data...')
     dictionary = np.load(cfg.dictionary_file)
     Dataset = COCOSEGMSHIFT if cfg.dataset == 'coco' else PascalVOC
+    if 'hourglass' in cfg.arch:
+        cfg.padding = 127
+    else:
+        cfg.padding = 31
     train_dataset = Dataset(cfg.data_dir, cfg.dictionary_file,
-                            'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size)
+                            'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size, padding=cfg.padding)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,
                                                                     num_replicas=num_gpus,
                                                                     rank=cfg.local_rank)
@@ -122,8 +127,10 @@ def main():
     print('Creating model...')
     if 'hourglass' in cfg.arch:
         model = get_hourglass[cfg.arch]
-    elif 'resdcn' in cfg.arch:
-        model = get_pose_net(num_layers=int(cfg.arch.split('_')[-1]), num_classes=train_dataset.num_classes)
+    # elif 'resdcn' in cfg.arch:
+    #     model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), num_classes=train_dataset.num_classes)
+    elif 'resnet' in cfg.arch:
+        model = get_pose_resnet(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
     else:
         raise NotImplementedError
 

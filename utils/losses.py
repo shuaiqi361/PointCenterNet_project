@@ -1,23 +1,23 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from chamferdist import ChamferDistance
+# from chamferdist import ChamferDistance
 import math
 
 
-def chamfer_distance_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1):
-    chamfer = ChamferDistance()
-    mask = mask[:, :, None].expand_as(gt_shapes).float()  # mask has been expanded to calculate the mean of 32 points
-    loss = 0
-    for r in pred_shapes:
-        target_shape = (gt_shapes * mask).view(-1, 32, 2)
-        shape_ = (r * mask).view(-1, 32, 2)
-        loss += (chamfer(target_shape, shape_, reduction='sum')
-                 + chamfer(shape_, target_shape, reduction='sum')) / (mask.sum() + 1e-4)
-
-    loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
-
-    return loss / 2. + sparsity * loss_sparsity
+# def chamfer_distance_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.1):
+#     chamfer = ChamferDistance()
+#     mask = mask[:, :, None].expand_as(gt_shapes).float()  # mask has been expanded to calculate the mean of 32 points
+#     loss = 0
+#     for r in pred_shapes:
+#         target_shape = (gt_shapes * mask).view(-1, 32, 2)
+#         shape_ = (r * mask).view(-1, 32, 2)
+#         loss += (chamfer(target_shape, shape_, reduction='sum')
+#                  + chamfer(shape_, target_shape, reduction='sum')) / (mask.sum() + 1e-4)
+#
+#     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
+#
+#     return loss / 2. + sparsity * loss_sparsity
 
 
 def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask, sparsity=0.1):
@@ -48,7 +48,7 @@ def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0.01
     if roll:
         cmm_gt_shapes = torch.zeros(size=gt_shapes.size(), device=gt_shapes.device)
         for bs in range(batch_size):
-            for i in range(max_obj): # max loop should be 128, which is the maximum number of objects
+            for i in range(max_obj):  # max loop should be 128, which is the maximum number of objects
                 if mask[bs, i, 0] == 0:
                     break  # enumerated all objects of the current image
                 else:

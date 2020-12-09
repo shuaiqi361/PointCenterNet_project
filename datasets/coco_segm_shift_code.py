@@ -60,7 +60,7 @@ def encode_mask(mask):
 
 
 class COCOSEGMSHIFT(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=512):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=512, padding=127):
         super(COCOSEGMSHIFT, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
@@ -76,14 +76,14 @@ class COCOSEGMSHIFT(data.Dataset):
         self.split = split
         self.dictionary_file = dictionary_file
         self.data_dir = data_dir
-        self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
+        self.img_dir = os.path.join(self.data_dir, 'images/%s2017' % split)
         if split == 'test':
             self.annot_path = os.path.join(self.data_dir, 'annotations', 'image_info_test-dev2017.json')
         else:
             self.annot_path = os.path.join(self.data_dir, 'annotations', 'instances_%s2017.json' % split)
 
         self.max_objs = 128
-        self.padding = 127  # 31 for resnet/resdcn
+        self.padding = padding  # 31 for resnet/resdcn
         self.down_ratio = 4
         self.img_size = {'h': img_size, 'w': img_size}
         self.fmap_size = {'h': img_size // self.down_ratio, 'w': img_size // self.down_ratio}
