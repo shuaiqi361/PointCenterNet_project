@@ -27,7 +27,7 @@ from nets.resdcn_code_n_offset import get_pose_net
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, chamfer_distance_loss, contour_mapping_loss
+from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, contour_mapping_loss  # , chamfer_distance_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_code_n_offset_decode
 
