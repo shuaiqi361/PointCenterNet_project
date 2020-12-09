@@ -68,22 +68,19 @@ def make_kp_layer(cnv_dim, curr_dim, out_dim):
 
 def make_code_layer(cnv_dim, curr_dim, out_dim):
     return nn.Sequential(convolution(3, cnv_dim, curr_dim, with_bn=False),
-                         nn.Conv2d(curr_dim, out_dim, (1, 1)),
+                         nn.Conv2d(curr_dim, out_dim, (3, 3), padding=1),
                          nn.BatchNorm2d(out_dim),
                          nn.LeakyReLU(inplace=True),
-                         nn.Conv2d(out_dim, out_dim * 2, (3, 3), padding=1),
-                         nn.BatchNorm2d(out_dim * 2),
-                         nn.LeakyReLU(inplace=True),
-                         nn.Conv2d(out_dim * 2, out_dim, (1, 1)),
+                         nn.Conv2d(out_dim, out_dim, (1, 1))
                          )
 
 
 def make_offset_layer(cnv_dim, curr_dim, out_dim):
     return nn.Sequential(convolution(3, cnv_dim, curr_dim, with_bn=False),
-                         nn.Conv2d(curr_dim, curr_dim, (3, 3), padding=1),
-                         nn.BatchNorm2d(curr_dim),
+                         nn.Conv2d(curr_dim, out_dim, (3, 3), padding=1),
+                         nn.BatchNorm2d(out_dim),
                          nn.LeakyReLU(inplace=True),
-                         nn.Conv2d(curr_dim, out_dim, (1, 1)),
+                         nn.Conv2d(out_dim, out_dim, (1, 1)),
                          )
 
 
