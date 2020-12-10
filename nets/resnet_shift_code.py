@@ -1,5 +1,5 @@
 import os
-
+import math
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
@@ -106,6 +106,9 @@ class PoseResNet(nn.Module):
 
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(3, [256, 256, 256], [4, 4, 4])
+        self.emit_layer = nn.Sequential(nn.Conv2d(256 + 64, 512, kernel_size=3, padding=1),
+                                        nn.ReLU(inplace=True),
+                                        nn.Conv2d(512, 256, kernel_size=1))
         # self.final_layer = []
 
         if head_conv > 0:
@@ -122,8 +125,8 @@ class PoseResNet(nn.Module):
                                       nn.ReLU(inplace=True),
                                       nn.Conv2d(head_conv, 4, kernel_size=1))
             self.codes_ = nn.Sequential(nn.Conv2d(256, head_conv, kernel_size=3, padding=1),
-                                      nn.ReLU(inplace=True),
-                                      nn.Conv2d(head_conv, 64, kernel_size=1))
+                                        nn.ReLU(inplace=True),
+                                        nn.Conv2d(head_conv, 64, kernel_size=1))
         else:
             # heatmap layers
             self.hmap = nn.Conv2d(in_channels=256, out_channels=num_classes, kernel_size=1)
@@ -133,6 +136,16 @@ class PoseResNet(nn.Module):
             self.codes_ = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)
 
         # self.final_layer = nn.ModuleList(self.final_layer)
+
+    def fill_up_weights(self, up):
+        w = up.weight.data
+        f = math.ceil(w.size(2) / 2)
+        c = (2 * f - 1 - f % 2) / (2. * f)
+        for i in range(w.size(2)):
+            for j in range(w.size(3)):
+                w[0, 0, i, j] = (1 - math.fabs(i / f - c)) * (1 - math.fabs(j / f - c))
+        for c in range(1, w.size(0)):
+            w[c, 0, :, :] = w[0, 0, :, :]
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -189,20 +202,22 @@ class PoseResNet(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        x = self.maxpool(x)
-
-        x = self.layer1(x)
+        x_max = self.maxpool(x)  # x shape: torch.Size([4, 64, 128, 128])
+        x = self.layer1(x_max)
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-
         x = self.deconv_layers(x)
+        x = torch.cat([x_max, x], dim=1)
+        x = self.emit_layer(x)
         out = [[self.hmap(x), self.regs(x), self.w_h_(x), self.codes_(x)]]
+
         return out
 
     def init_weights(self, num_layers):
         for m in self.deconv_layers.modules():
             if isinstance(m, nn.ConvTranspose2d):
+                self.fill_up_weights(m)
                 nn.init.normal_(m.weight, std=0.001)
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
