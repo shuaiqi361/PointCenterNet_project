@@ -87,12 +87,12 @@ class COCOSEGMSHIFT(data.Dataset):
         self.down_ratio = 4
         self.img_size = {'h': img_size, 'w': img_size}
         self.fmap_size = {'h': img_size // self.down_ratio, 'w': img_size // self.down_ratio}
-        self.rand_scales = np.arange(0.5, 1.4, 0.1)
+        self.rand_scales = np.arange(0.5, 1.3, 0.1)
         self.gaussian_iou = 0.7
 
         self.n_vertices = 32
         self.n_codes = 64
-        self.sparse_alpha = 0.05
+        self.sparse_alpha = 0.1
 
         print('==> initializing coco 2017 %s data.' % split)
         self.coco = coco.COCO(self.annot_path)
@@ -224,15 +224,15 @@ class COCOSEGMSHIFT(data.Dataset):
                 for m in range(self.n_vertices):
                     shape[2 * m] = width - shape[2 * m] - 1
 
-            bbox[:2] = affine_transform(affine_transform(bbox[:2], trans_img), trans_fmap)
-            bbox[2:] = affine_transform(affine_transform(bbox[2:], trans_img), trans_fmap)
+            bbox[:2] = affine_transform(bbox[:2], trans_fmap)
+            bbox[2:] = affine_transform(bbox[2:], trans_fmap)
             bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.fmap_size['w'] - 1)
             bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.fmap_size['h'] - 1)
             h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
 
             # generate gt shape mean and std from contours
             for m in range(self.n_vertices):  # apply scale and crop transform to shapes
-                shape[2 * m:2 * m + 2] = affine_transform(affine_transform(shape[2 * m:2 * m + 2], trans_img), trans_fmap)
+                shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_fmap)
 
             shape_clipped = np.reshape(shape, (self.n_vertices, 2))
 
