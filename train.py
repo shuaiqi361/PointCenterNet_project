@@ -23,6 +23,7 @@ from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass import get_hourglass
 from nets.resnet import get_pose_resnet
+from nets.resdcn import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -117,6 +118,8 @@ def main():
     model = get_hourglass[cfg.arch]
   elif 'resnet' in cfg.arch:
     model = get_pose_resnet(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
+  elif 'resdcn' in cfg.arch:
+    model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
   else:
     raise NotImplementedError
 
