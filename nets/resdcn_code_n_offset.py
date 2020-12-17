@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 
-from lib.DCNv2.dcn_v2 import DCN
+from detectron2.layers.deform_conv import ModulatedDeformConv as DCN
 import torch.utils.model_zoo as model_zoo
 
 BN_MOMENTUM = 0.1

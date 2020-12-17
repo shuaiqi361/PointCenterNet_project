@@ -2,7 +2,7 @@ import math
 
 import torch.nn as nn
 
-from lib.DCNv2.dcn_v2 import DCN
+from detectron2.layers.deform_conv import ModulatedDeformConv as DCN
 import torch.utils.model_zoo as model_zoo
 
 BN_MOMENTUM = 0.1
@@ -196,7 +196,7 @@ class PoseResNet(nn.Module):
 
             planes = num_filters[i]
             fc = DCN(self.inplanes, planes,
-                     kernel_size=(3, 3), stride=1,
+                     kernel_size=3, stride=1,
                      padding=1, dilation=1, deformable_groups=1)
             # fc = nn.Conv2d(self.inplanes, planes,
             #         kernel_size=3, stride=1,
