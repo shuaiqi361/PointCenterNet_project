@@ -60,7 +60,7 @@ class COCO(data.Dataset):
         self.split = split
         # self.data_dir = os.path.join(data_dir, 'coco')
         self.data_dir = data_dir
-        self.img_dir = os.path.join(self.data_dir, 'images/%s2017' % split)
+        self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
         if split == 'test':
             self.annot_path = os.path.join(self.data_dir, 'annotations', 'image_info_test-dev2017.json')
         else:
