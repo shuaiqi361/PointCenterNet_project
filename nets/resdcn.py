@@ -250,7 +250,7 @@ resnet_spec = {18: (BasicBlock, [2, 2, 2, 2]),
                152: (Bottleneck, [3, 8, 36, 3])}
 
 
-def get_pose_net(num_layers, head_conv=64, num_classes=80):
+def get_pose_resdcn(num_layers, head_conv=64, num_classes=80):
     block_class, layers = resnet_spec[num_layers]
     model = PoseResNet(block_class, layers, head_conv, num_classes)
     model.init_weights(num_layers)
