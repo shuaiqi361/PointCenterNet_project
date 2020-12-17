@@ -363,7 +363,7 @@ def main():
                         # plt.show()
 
             value = [255, 255, 255]
-            dst_img = cv2.addWeighted(output_image, 0.5, blend_mask, 0.5, 0)
+            dst_img = cv2.addWeighted(output_image, 0.4, blend_mask, 0.6, 0)
             dst_img[blend_mask == 0] = output_image[blend_mask == 0]
             img_original = cv2.copyMakeBorder(img_original, 0, 0, 0, 10, cv2.BORDER_CONSTANT, None, value)
             img_connect = cv2.copyMakeBorder(img_connect, 0, 0, 10, 10, cv2.BORDER_CONSTANT, None, value)

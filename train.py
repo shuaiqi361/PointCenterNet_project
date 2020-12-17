@@ -22,7 +22,7 @@ from datasets.coco import COCO, COCO_eval
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass import get_hourglass
-from nets.resdcn import get_pose_net
+from nets.resnet import get_pose_resnet
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -109,14 +109,14 @@ def main():
   Dataset_eval = COCO_eval if cfg.dataset == 'coco' else PascalVOC_eval
   val_dataset = Dataset_eval(cfg.data_dir, 'val', test_scales=[1.], test_flip=False)
   val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
-                                           shuffle=False, num_workers=1, pin_memory=True,
+                                           shuffle=False, num_workers=0, pin_memory=False,
                                            collate_fn=val_dataset.collate_fn)
 
   print('Creating model...')
   if 'hourglass' in cfg.arch:
     model = get_hourglass[cfg.arch]
-  elif 'resdcn' in cfg.arch:
-    model = get_pose_net(num_layers=int(cfg.arch.split('_')[-1]), num_classes=train_dataset.num_classes)
+  elif 'resnet' in cfg.arch:
+    model = get_pose_resnet(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
   else:
     raise NotImplementedError
 
@@ -234,7 +234,7 @@ def main():
       start = time.time()
       train_sampler.set_epoch(epoch)
       train(epoch)
-      if cfg.val_interval > 0 and epoch % cfg.val_interval == 0:
+      if cfg.val_interval > 0 and epoch % cfg.val_interval == 0 or epoch == 1:
           val_map(epoch)
           print(saver.save(model.module.state_dict(), 'checkpoint'))
       lr_scheduler.step(epoch)  # move to here after pytorch1.1.0

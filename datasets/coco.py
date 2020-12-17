@@ -58,19 +58,20 @@ class COCO(data.Dataset):
         self.std = np.array(COCO_STD, dtype=np.float32)[None, None, :]
 
         self.split = split
-        self.data_dir = os.path.join(data_dir, 'coco')
-        self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
+        # self.data_dir = os.path.join(data_dir, 'coco')
+        self.data_dir = data_dir
+        self.img_dir = os.path.join(self.data_dir, 'images/%s2017' % split)
         if split == 'test':
             self.annot_path = os.path.join(self.data_dir, 'annotations', 'image_info_test-dev2017.json')
         else:
             self.annot_path = os.path.join(self.data_dir, 'annotations', 'instances_%s2017.json' % split)
 
         self.max_objs = 128
-        self.padding = 127  # 31 for resnet/resdcn
+        self.padding = 31  # 31 for resnet/resdcn
         self.down_ratio = 4
         self.img_size = {'h': img_size, 'w': img_size}
         self.fmap_size = {'h': img_size // self.down_ratio, 'w': img_size // self.down_ratio}
-        self.rand_scales = np.arange(0.6, 1.4, 0.1)
+        self.rand_scales = np.arange(0.6, 1.3, 0.1)
         self.gaussian_iou = 0.7
 
         print('==> initializing coco 2017 %s data.' % split)

@@ -233,7 +233,7 @@ def resnet_18():
     return model
 
 
-def get_pose_net(num_layers, head_conv, num_classes=80):
+def get_pose_resnet(num_layers, head_conv, num_classes=80):
     block_class, layers = resnet_spec[num_layers]
 
     model = PoseResNet(block_class, layers, head_conv=head_conv, num_classes=num_classes)
@@ -247,7 +247,7 @@ if __name__ == '__main__':
         # pass
 
 
-    net = get_pose_net(num_layers=18, head_conv=64)
+    net = get_pose_resnet(num_layers=18, head_conv=64)
 
     for m in net.modules():
         if isinstance(m, nn.Conv2d):
