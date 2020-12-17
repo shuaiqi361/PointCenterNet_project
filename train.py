@@ -29,6 +29,7 @@ from utils.image import transform_preds
 from utils.losses import _neg_loss, _reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctdet_decode
+from nms.nms import soft_nms
 
 # Training settings
 parser = argparse.ArgumentParser(description='simple_centernet45')
