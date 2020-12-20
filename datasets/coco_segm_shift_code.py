@@ -60,7 +60,7 @@ def encode_mask(mask):
 
 
 class COCOSEGMSHIFT(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=512, padding=127):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=512, padding=31):
         super(COCOSEGMSHIFT, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
@@ -87,7 +87,7 @@ class COCOSEGMSHIFT(data.Dataset):
         self.down_ratio = 4
         self.img_size = {'h': img_size, 'w': img_size}
         self.fmap_size = {'h': img_size // self.down_ratio, 'w': img_size // self.down_ratio}
-        self.rand_scales = np.arange(0.5, 1.4, 0.1)
+        self.rand_scales = np.arange(0.6, 1.3, 0.1)
         self.gaussian_iou = 0.7
 
         self.n_vertices = 32

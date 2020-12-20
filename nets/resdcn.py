@@ -1,7 +1,6 @@
 import math
-
+import torch
 import torch.nn as nn
-
 # from detectron2.layers.deform_conv import ModulatedDeformConv as DCN
 from nets.deform_conv import DCN
 import torch.utils.model_zoo as model_zoo

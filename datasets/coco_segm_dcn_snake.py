@@ -59,9 +59,9 @@ def encode_mask(mask):
     return rle
 
 
-class COCOSEGM(data.Dataset):
+class COCOSEGMSNAKE(data.Dataset):
     def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=512, padding=31):
-        super(COCOSEGM, self).__init__()
+        super(COCOSEGMSNAKE, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
         self.valid_ids = COCO_IDS
@@ -181,22 +181,7 @@ class COCOSEGM(data.Dataset):
         trans_img = get_affine_transform(center, scale, 0, [self.img_size['w'], self.img_size['h']])
         img = cv2.warpAffine(img, trans_img, (self.img_size['w'], self.img_size['h']))
 
-        # -----------------------------------debug---------------------------------
-        # image_show = img.copy()
-        # for bbox, label in zip(bboxes, labels):
-        #     if flipped:
-        #         bbox[[0, 2]] = width - bbox[[2, 0]] - 1
-        #     bbox[:2] = affine_transform(bbox[:2], trans_img)
-        #     bbox[2:] = affine_transform(bbox[2:], trans_img)
-        #     bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
-        #     bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
-        #     cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
-        #     cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
-        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        # cv2.imshow('img', image_show)
-        # cv2.waitKey()
-        # -----------------------------------debug---------------------------------
-
+        # read and process the image to the input
         img = img.astype(np.float32) / 255.
 
         if self.split == 'train':
@@ -207,12 +192,12 @@ class COCOSEGM(data.Dataset):
         img = img.transpose(2, 0, 1)  # from [H, W, C] to [C, H, W]
 
         trans_fmap = get_affine_transform(center, scale, 0, [self.fmap_size['w'], self.fmap_size['h']])
-        # image_show = cv2.warpAffine(image_show, trans_fmap, (self.fmap_size['w'], self.fmap_size['h']))
 
         hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
         w_h_ = np.zeros((self.max_objs, 4), dtype=np.float32)  # regression of 4 offsets to the center of mass
         codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)  # gt coefficients/codes for shapes
         shapes_ = np.zeros((self.max_objs, self.n_vertices * 2), dtype=np.float32)  # offsets of each vertex
+        centers_ = np.zeros((self.max_objs, 2), dtype=np.float32)  # offsets of each vertex
         regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # quantization error
         inds = np.zeros((self.max_objs,), dtype=np.int64)
         ind_masks = np.zeros((self.max_objs,), dtype=np.uint8)
@@ -257,6 +242,7 @@ class COCOSEGM(data.Dataset):
             if h > 0 and w > 0:
                 obj_c = mass_center
                 obj_c_int = obj_c.astype(np.int32)
+                centers_[k] = mass_center
 
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
@@ -269,29 +255,7 @@ class COCOSEGM(data.Dataset):
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
                 ind_masks[k] = 1
 
-        # detections = np.array(detections, dtype=np.float32) \
-        #   if len(detections) > 0 else np.zeros((1, 6), dtype=np.float32)
-
-        # -----------------------------------debug---------------------------------
-        # canvas = np.zeros((self.fmap_size['h'] * 2, self.fmap_size['w'] * 2, 3), dtype=np.float32)
-        # canvas[0:self.fmap_size['h'], 0:self.fmap_size['w'], :] = np.tile(np.expand_dims(hmap[0], 2), (1, 1, 3))
-        # canvas[0:self.fmap_size['h'], self.fmap_size['w']:, :] = np.tile(np.expand_dims(hmap[1], 2), (1, 1, 3))
-        # canvas[self.fmap_size['h']:, 0:self.fmap_size['w'], :] = np.tile(np.expand_dims(hmap[2], 2), (1, 1, 3))
-        # canvas[self.fmap_size['h']:, self.fmap_size['w']:, :] = np.tile(np.expand_dims(hmap[3], 2), (1, 1, 3))
-        # print(w_h_[0], regs[0])
-        # cv2.imshow('hmap', canvas)
-        # cv2.waitKey()
-        # -----------------------------------debug---------------------------------
-        # -----------------------------------debug---------------------------------
-        # image_show = img.copy()
-        for bbox, label, shape in zip(bboxes, labels, shapes):
-            cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 1)
-            # cv2.polylines(image_show, [indexed_shape.astype(np.int32)], True, (0, 0, 255), thickness=2)
-        cv2.imshow('img', image_show)
-        cv2.waitKey()
-        # -----------------------------------debug---------------------------------
-
-        return {'image': img, 'codes': codes_, 'shapes': shapes_,
+        return {'image': img, 'codes': codes_, 'shapes': shapes_, 'centers': centers_,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
                 'c': center, 's': scale, 'img_id': img_id}
 
@@ -299,9 +263,9 @@ class COCOSEGM(data.Dataset):
         return self.num_samples
 
 
-class COCOSEGMEVAL(COCOSEGM):
+class COCOSEGMSNAKEEVAL(COCOSEGMSNAKE):
     def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=31):
-        super(COCOSEGMEVAL, self).__init__(data_dir, dictionary_file, split, padding)
+        super(COCOSEGMSNAKEEVAL, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales
         self.fix_size = fix_size

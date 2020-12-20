@@ -1,5 +1,5 @@
 import math
-import torch
+# import torch
 import torch.nn as nn
 from nets.deform_conv import DCN
 import torch.utils.model_zoo as model_zoo
@@ -101,18 +101,19 @@ def fill_up_weights(up):
 def fill_fc_weights(layers):
     for m in layers.modules():
         if isinstance(m, nn.Conv2d):
-            nn.init.normal_(m.weight, std=0.001)
-            # torch.nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
-            # torch.nn.init.xavier_normal_(m.weight.data)
+            # nn.init.normal_(m.weight, std=0.001)
+            # nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
+            nn.init.xavier_normal_(m.weight.data)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
 
 class PoseResNet(nn.Module):
-    def __init__(self, block, layers, head_conv, num_classes):
+    def __init__(self, block, layers, head_conv, num_classes=80):
         self.inplanes = 64
         self.deconv_with_bias = False
         self.num_classes = num_classes
+        # self.iter = num_iter
 
         super(PoseResNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -131,29 +132,64 @@ class PoseResNet(nn.Module):
             # heatmap layers
             self.hmap = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, num_classes, kernel_size=1, bias=True))
             self.hmap[-1].bias.data.fill_(-2.19)
             # regression layers
             self.regs = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
             self.w_h_ = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, 4, kernel_size=1, bias=True))
-            self.codes_ = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
-                                        nn.ReLU(inplace=True),
-                                        nn.Conv2d(head_conv, 64, kernel_size=1, bias=True))
+
+            self.codes_1 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(128),
+                                         nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
+            self.codes_2 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(128),
+                                         nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
+            self.codes_3 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(128),
+                                         nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
         else:
             # heatmap layers
             self.hmap = nn.Conv2d(64, num_classes, kernel_size=1, bias=True)
             # regression layers
             self.regs = nn.Conv2d(64, 2, kernel_size=1, bias=True)
             self.w_h_ = nn.Conv2d(64, 4, kernel_size=1, bias=True)
-            self.codes_ = nn.Conv2d(64, 64, kernel_size=1, bias=True)
+            self.codes_1 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(128),
+                                         nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
+            self.codes_2 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(128),
+                                         nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
+            self.codes_3 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(128),
+                                         nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
 
         fill_fc_weights(self.regs)
         fill_fc_weights(self.w_h_)
-        fill_fc_weights(self.codes_)
+        fill_fc_weights(self.codes_1)
+        fill_fc_weights(self.codes_2)
+        fill_fc_weights(self.codes_3)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -197,10 +233,7 @@ class PoseResNet(nn.Module):
             fc = DCN(self.inplanes, planes,
                      kernel_size=3, stride=1,
                      padding=1, dilation=1, deformable_groups=1)
-            # fc = nn.Conv2d(self.inplanes, planes,
-            #         kernel_size=3, stride=1,
-            #         padding=1, dilation=1, bias=False)
-            # fill_fc_weights(fc)
+
             up = nn.ConvTranspose2d(in_channels=planes,
                                     out_channels=planes,
                                     kernel_size=kernel,
@@ -232,7 +265,12 @@ class PoseResNet(nn.Module):
         x = self.layer4(x)
 
         x = self.deconv_layers(x)
-        out = [[self.hmap(x), self.regs(x), self.w_h_(x), self.codes_(x)]]
+
+        xc_1 = self.codes_1(x)
+        xc_2 = self.codes_2(xc_1)
+        xc_3 = self.codes_3(xc_2)
+
+        out = [[self.hmap(x), self.regs(x), self.w_h_(x), xc_1, xc_2, xc_3]]
         return out
 
     def init_weights(self, num_layers):
@@ -272,7 +310,7 @@ if __name__ == '__main__':
         # pass
 
 
-    net = get_pose_net(18, num_classes=80).cuda()
+    net = get_pose_resdcn(18, num_classes=80).cuda()
 
     # ckpt = torch.load('../ckpt/ctdet_pascal_resdcn18_384.pth')['state_dict']
     # new_ckpt = OrderedDict()

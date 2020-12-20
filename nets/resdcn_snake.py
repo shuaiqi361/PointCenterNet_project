@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 from nets.deform_conv import DCN
+from nets.snake_conv import Snake
 import torch.utils.model_zoo as model_zoo
 
 BN_MOMENTUM = 0.1
@@ -101,20 +102,25 @@ def fill_up_weights(up):
 def fill_fc_weights(layers):
     for m in layers.modules():
         if isinstance(m, nn.Conv2d):
-            nn.init.normal_(m.weight, std=0.001)
-            # torch.nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
-            # torch.nn.init.xavier_normal_(m.weight.data)
+            # nn.init.normal_(m.weight, std=0.001)
+            # nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
+            nn.init.xavier_normal_(m.weight.data)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
 
-class PoseResNet(nn.Module):
-    def __init__(self, block, layers, head_conv, num_classes):
+class SnakeResDCN(nn.Module):
+    def __init__(self, block, layers, head_conv=64, num_classes=80, snake_adj=4, dictionary=None):
         self.inplanes = 64
         self.deconv_with_bias = False
         self.num_classes = num_classes
+        self.snake_adj = snake_adj
+        self.max_obj = 128
+        self.n_vertices = 32
+        self.dict_tensor = dictionary
+        self.dict_tensor.requires_grad = False
 
-        super(PoseResNet, self).__init__()
+        super(SnakeResDCN, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64, momentum=BN_MOMENTUM)
         self.relu = nn.ReLU(inplace=True)
@@ -127,33 +133,101 @@ class PoseResNet(nn.Module):
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(3, [256, 128, 64], [4, 4, 4])
 
+        # used for snake conv on offsets
+        self.snake_1 = Snake(state_dim=64, feature_dim=64, n_adj=self.snake_adj)
+        self.snake_2 = Snake(state_dim=64, feature_dim=64, n_adj=self.snake_adj)
+        self.snake_3 = Snake(state_dim=64, feature_dim=64, n_adj=self.snake_adj)
+
         if head_conv > 0:
             # heatmap layers
             self.hmap = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, num_classes, kernel_size=1, bias=True))
             self.hmap[-1].bias.data.fill_(-2.19)
             # regression layers
             self.regs = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
             self.w_h_ = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, 4, kernel_size=1, bias=True))
-            self.codes_ = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
-                                        nn.ReLU(inplace=True),
-                                        nn.Conv2d(head_conv, 64, kernel_size=1, bias=True))
+            self.codes = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+                                       nn.ReLU(inplace=True),
+                                       nn.BatchNorm2d(128),
+                                       nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
         else:
-            # heatmap layers
-            self.hmap = nn.Conv2d(64, num_classes, kernel_size=1, bias=True)
-            # regression layers
-            self.regs = nn.Conv2d(64, 2, kernel_size=1, bias=True)
-            self.w_h_ = nn.Conv2d(64, 4, kernel_size=1, bias=True)
-            self.codes_ = nn.Conv2d(64, 64, kernel_size=1, bias=True)
+            raise NotImplementedError
 
         fill_fc_weights(self.regs)
         fill_fc_weights(self.w_h_)
-        fill_fc_weights(self.codes_)
+        fill_fc_weights(self.codes)
+
+    def get_vertex_features(self, fmaps, poly):
+        """
+        :param fmaps: (N, C, H_in, W_in)
+        :param poly: (N, max_obj, n_vertices, 2)
+        :param h: spatial dim: width and height of the last feature map, 512 x 512
+        :param w:
+        :return: interpolated features (N, C, max_obj, n_vertices)
+        """
+        bs, c, h, w = fmaps.size()
+        obj_polygons = poly.clone()
+        obj_polygons[..., 0] = obj_polygons[..., 0] / (w / 2.) - 1  # the grid argument is in the range [-1, 1]
+        obj_polygons[..., 1] = obj_polygons[..., 1] / (h / 2.) - 1
+
+        vert_feature = nn.functional.grid_sample(fmaps, grid=obj_polygons, mode='bilinear')
+
+        return vert_feature.transpose(0, 2, 3, 1)
+
+    def _gather_feature(self, feat, ind, mask=None):
+        dim = feat.size(2)
+        ind = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), dim)
+        feat = feat.gather(1, ind)
+        if mask is not None:
+            mask = mask.unsqueeze(2).expand_as(feat)
+            feat = feat[mask]
+            feat = feat.view(-1, dim)
+        return feat
+
+    def _tranpose_and_gather_feature(self, feat, ind):
+        feat = feat.permute(0, 2, 3, 1).contiguous()
+        feat = feat.view(feat.size(0), -1, feat.size(3))
+        feat = self._gather_feature(feat, ind)
+        return feat
+
+    def _nms(self, heat, kernel=3):
+        hmax = nn.functional.max_pool2d(heat, kernel, stride=1, padding=(kernel - 1) // 2)
+        keep = (hmax == heat).float()
+        return heat * keep
+
+    def _topk(self, scores, k=128):
+        batch, cat, height, width = scores.size()
+
+        topk_scores, topk_inds = torch.topk(scores.view(batch, cat, -1), k)
+
+        topk_inds = topk_inds % (height * width)
+        topk_ys = (topk_inds / width).int().float()
+        topk_xs = (topk_inds % width).int().float()
+
+        topk_score, topk_ind = torch.topk(topk_scores.view(batch, -1), k)
+        topk_clses = (topk_ind / k).int()
+        topk_inds = self._gather_feature(topk_inds.view(batch, -1, 1), topk_ind).view(batch, k)
+        topk_ys = self._gather_feature(topk_ys.view(batch, -1, 1), topk_ind).view(batch, k)
+        topk_xs = self._gather_feature(topk_xs.view(batch, -1, 1), topk_ind).view(batch, k)
+
+        return topk_score, topk_inds, topk_clses, topk_ys, topk_xs
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -195,12 +269,9 @@ class PoseResNet(nn.Module):
 
             planes = num_filters[i]
             fc = DCN(self.inplanes, planes,
-                     kernel_size=3, stride=1,
+                     kernel_size=(3, 3), stride=1,
                      padding=1, dilation=1, deformable_groups=1)
-            # fc = nn.Conv2d(self.inplanes, planes,
-            #         kernel_size=3, stride=1,
-            #         padding=1, dilation=1, bias=False)
-            # fill_fc_weights(fc)
+
             up = nn.ConvTranspose2d(in_channels=planes,
                                     out_channels=planes,
                                     kernel_size=kernel,
@@ -220,7 +291,7 @@ class PoseResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x, inds=None, gt_center=None):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -231,8 +302,61 @@ class PoseResNet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
-        x = self.deconv_layers(x)
-        out = [[self.hmap(x), self.regs(x), self.w_h_(x), self.codes_(x)]]
+        fmap = self.deconv_layers(x)
+        hmap_out = self.hmap(fmap)
+        regs_out = self.regs(fmap)
+        w_h_out = self.w_h_(fmap)
+        codes_out = self.codes(fmap)
+
+        bs, ch, h, w = fmap.size()
+        if inds is None:
+            hmap_out = self._nms(hmap_out)  # perform nms on heatmaps
+            _, inds, _, ys, xs = self._topk(hmap_out, k=self.max_obj)
+
+        # extract vertices features from the fmap
+        obj_codes = self._tranpose_and_gather_feature(codes_out, inds)
+        obj_regs = self._tranpose_and_gather_feature(regs_out, inds)
+
+        if gt_center is None:
+            obj_regs = obj_regs.view(bs, self.max_obj, 2)
+            xs = xs.view(bs, self.max_obj, 1) + obj_regs[:, :, 0:1]
+            ys = ys.view(bs, self.max_obj, 1) + obj_regs[:, :, 1:2]
+            gt_center = torch.cat([xs, ys], dim=2).view(bs, self.max_obj, 1, 2)
+
+        obj_codes = self._tranpose_and_gather_feature(obj_codes, inds)
+        obj_codes = obj_codes.view(bs, self.max_obj, 64)
+
+        segms = torch.matmul(obj_codes, self.dict_tensor)
+        polys = segms.view(bs, self.max_obj, 32, 2) + gt_center
+
+        # first snake
+        vertex_feats = self.get_vertex_features(fmap, polys)  # (N, C, max_obj, 32)
+        batch_v_feats = []
+        for n in range(bs):
+            batch_v_feats.append(self.snake_1(vertex_feats[n]).unsqueeze(0))
+
+        offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
+        polys_1 = polys + offsets.transpose(0, 2, 3, 1)
+
+        # second snake
+        vertex_feats = self.get_vertex_features(fmap, polys_1)  # (N, C, max_obj, 32)
+        batch_v_feats = []
+        for n in range(bs):
+            batch_v_feats.append(self.snake_2(vertex_feats[n]).unsqueeze(0))
+
+        offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
+        polys_2 = polys_1 + offsets.transpose(0, 2, 3, 1)
+
+        # third snake
+        vertex_feats = self.get_vertex_features(fmap, polys_2)  # (N, C, max_obj, 32)
+        batch_v_feats = []
+        for n in range(bs):
+            batch_v_feats.append(self.snake_3(vertex_feats[n]).unsqueeze(0))
+
+        offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
+        polys_3 = polys_2 + offsets.transpose(0, 2, 3, 1)
+
+        out = [[hmap_out, regs_out, w_h_out, codes_out, polys_1, polys_2, polys_3]]
         return out
 
     def init_weights(self, num_layers):
@@ -254,9 +378,9 @@ resnet_spec = {18: (BasicBlock, [2, 2, 2, 2]),
                152: (Bottleneck, [3, 8, 36, 3])}
 
 
-def get_pose_resdcn(num_layers, head_conv=64, num_classes=80):
+def get_pose_resdcn(num_layers=50, head_conv=64, num_classes=80):
     block_class, layers = resnet_spec[num_layers]
-    model = PoseResNet(block_class, layers, head_conv, num_classes)
+    model = SnakeResDCN(block_class, layers, head_conv, num_classes)
     model.init_weights(num_layers)
     return model
 
