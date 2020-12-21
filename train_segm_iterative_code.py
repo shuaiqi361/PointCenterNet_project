@@ -216,7 +216,8 @@ def main():
                         _, _, input_h, input_w = inputs[scale]['image'].shape
                         input_scales[img_id] = {'h': input_h, 'w': input_w}
 
-                    output = model(inputs[scale]['image'])[-1]
+                    hmaps, regs, w_h_s, _, _, codes = model(inputs[scale]['image'])[-1]
+                    output = [hmaps, regs, w_h_s, codes]
 
                     segms = ctsegm_shift_code_decode(*output, torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
                                                 K=cfg.test_topk)

@@ -158,11 +158,15 @@ class PoseResNet(nn.Module):
                                          nn.ReLU(inplace=True),
                                          nn.BatchNorm2d(128),
                                          nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
-            self.codes_2 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+            self.codes_2 = nn.Sequential(nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(64),
+                                         nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.BatchNorm2d(128),
                                          nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
-            self.codes_3 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+            self.codes_3 = nn.Sequential(nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(64),
+                                         nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.BatchNorm2d(128),
                                          nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
@@ -266,9 +270,9 @@ class PoseResNet(nn.Module):
 
         x = self.deconv_layers(x)
 
-        xc_1 = self.codes_1(x)
-        xc_2 = self.codes_2(xc_1)
-        xc_3 = self.codes_3(xc_2)
+        xc_1 = self.codes_1(x) + x
+        xc_2 = self.codes_2(xc_1) + xc_1
+        xc_3 = self.codes_3(xc_2) + xc_2
 
         out = [[self.hmap(x), self.regs(x), self.w_h_(x), xc_1, xc_2, xc_3]]
         return out
