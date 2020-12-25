@@ -278,7 +278,7 @@ def main():
                 results[img_id] = segms_and_scores
                 speed_list.append(end_image_time - start_image_time)
 
-        eval_results = val_dataset.run_eval(results, input_scales, save_dir=cfg.ckpt_dir)
+        eval_results = val_dataset.run_eval(results, save_dir=cfg.ckpt_dir)
         print_log(eval_results)
         summary_writer.add_scalar('val_mAP/mAP', eval_results[0], epoch)
         print_log('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))
@@ -291,7 +291,7 @@ def main():
         if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
             val_map(epoch)
             print_log(saver.save(model.module.state_dict(), 'checkpoint'))
-        lr_scheduler.step(epoch)  # move to here after pytorch1.1.0
+        lr_scheduler.step()  # move to here after pytorch1.1.0
 
         epoch_time = (time.time() - start) / 3600. / 24.
         print_log('ETA:{:.2f} Days'.format((cfg.num_epochs - epoch) * epoch_time))
