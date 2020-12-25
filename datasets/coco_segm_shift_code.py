@@ -310,7 +310,7 @@ class COCOSEGMSHIFT(data.Dataset):
 
 
 class COCO_eval_segm_shift(COCOSEGMSHIFT):
-    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=127):
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=31):
         super(COCO_eval_segm_shift, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales
