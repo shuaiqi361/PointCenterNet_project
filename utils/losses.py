@@ -64,10 +64,10 @@ def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0., 
                     cmm_gt_shapes[bs, i, :] = torch.roll(gt_shapes[bs, i, :], shifts=roll_index)
 
         loss_cmm = sum(torch.sum(
-            F.l1_loss(r * mask, cmm_gt_shapes * mask, reduction='none') * 5 / scale_norm) / (mask.sum() + 1e-4) for r in pred_shapes)
+            F.l1_loss(r * mask, cmm_gt_shapes * mask, reduction='none') * 10 / scale_norm) / (mask.sum() + 1e-4) for r in pred_shapes)
     else:
         loss_cmm = sum(torch.sum(
-            F.l1_loss(r * mask, gt_shapes * mask, reduction='none') * 5 / scale_norm) / (mask.sum() + 1e-4) for r in pred_shapes)
+            F.l1_loss(r * mask, gt_shapes * mask, reduction='none') * 10 / scale_norm) / (mask.sum() + 1e-4) for r in pred_shapes)
 
     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
 

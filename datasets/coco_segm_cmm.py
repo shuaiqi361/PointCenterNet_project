@@ -205,6 +205,7 @@ class COCOSEGMCMM(data.Dataset):
         hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
         w_h_ = np.zeros((self.max_objs, 4), dtype=np.float32)  # width and height of the shape
         shapes_ = np.zeros((self.max_objs, self.n_vertices * 2), dtype=np.float32)  # gt coefficients/codes for shapes
+        codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)
         regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for offsets of shape center
         inds = np.zeros((self.max_objs,), dtype=np.int64)
         ind_masks = np.zeros((self.max_objs,), dtype=np.uint8)
@@ -254,6 +255,8 @@ class COCOSEGMCMM(data.Dataset):
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 shapes_[k] = centered_shape.reshape((1, -1))
+                codes_[k], _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
+                                         lmbda=self.sparse_alpha, max_iter=80)
                 w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
                           mass_center[0] - bbox[0], bbox[2] - mass_center[0]  # [top, bottom, left, right] distance
                 regs[k] = obj_c - obj_c_int  # discretization error
@@ -274,7 +277,7 @@ class COCOSEGMCMM(data.Dataset):
         # cv2.waitKey()
         # -----------------------------------debug---------------------------------
 
-        return {'image': img, 'shapes': shapes_,
+        return {'image': img, 'shapes': shapes_, 'codes': codes_,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
                 'c': center, 's': scale, 'img_id': img_id}
 
@@ -390,4 +393,3 @@ class COCO_eval_segm_cmm(COCOSEGMCMM):
             out.append((img_id, {s: {k: torch.from_numpy(sample[s][k]).float()
             if k == 'image' else np.array(sample[s][k]) for k in sample[s]} for s in sample}))
         return out
-

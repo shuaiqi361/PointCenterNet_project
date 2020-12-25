@@ -22,7 +22,7 @@ from datasets.coco_segm_cmm import COCOSEGMCMM, COCO_eval_segm_cmm
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
-from nets.resdcn import get_pose_resdcn
+from nets.resdcn_iterative_cmm import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -128,7 +128,7 @@ def main():
                      modules=[2, 2, 2, 2, 2, 4],
                      dictionary=torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device))
     elif 'resdcn' in cfg.arch:
-        model = get_pose_net(num_layers=int(cfg.arch.split('_')[-1]), num_classes=train_dataset.num_classes)
+        model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
     else:
         raise NotImplementedError
 
@@ -147,7 +147,7 @@ def main():
         torch.cuda.empty_cache()
 
     optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.1)
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.2)
 
     def train(epoch):
         print_log('\n Epoch: %d' % epoch)
@@ -169,9 +169,11 @@ def main():
             c_1 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_1]
             c_2 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_2]
             c_3 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_3]
-            shapes_1 = [torch.matmul(c, dict_tensor) for c in codes_1]
-            shapes_2 = [torch.matmul(c, dict_tensor) for c in codes_2]
-            shapes_3 = [torch.matmul(c, dict_tensor) for c in codes_3]
+            # print(c_1[0].size(), dict_tensor.size())
+
+            shapes_1 = [torch.matmul(c, dict_tensor) for c in c_1]
+            shapes_2 = [torch.matmul(c, dict_tensor) for c in c_2]
+            shapes_3 = [torch.matmul(c, dict_tensor) for c in c_3]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
@@ -194,14 +196,15 @@ def main():
                 duration = time.perf_counter() - tic
                 tic = time.perf_counter()
                 print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
-                      ' hmap_loss= %.3f reg_loss= %.3f w_h_loss= %.3f  cmm_loss= %.3f' %
-                      (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), cmm_loss.item()) +
+                      ' hmap_loss= %.3f reg_loss= %.3f w_h_loss= %.3f code_loss= %.3f cmm_loss= %.3f' %
+                      (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(), cmm_loss.item()) +
                       ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
 
                 step = len(train_loader) * epoch + batch_idx
                 summary_writer.add_scalar('hmap_loss', hmap_loss.item(), step)
                 summary_writer.add_scalar('reg_loss', reg_loss.item(), step)
                 summary_writer.add_scalar('w_h_loss', w_h_loss.item(), step)
+                summary_writer.add_scalar('code_loss', codes_loss.item(), step)
                 summary_writer.add_scalar('cmm_loss', cmm_loss.item(), step)
         return
 
