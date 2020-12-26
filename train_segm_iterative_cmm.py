@@ -181,9 +181,9 @@ def main():
             codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
                           + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
                           + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
-            cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=True)
-                        + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=True)
-                        + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=True)) / 3.
+            cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
+                        + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
+                        + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
 
             loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
                    + cfg.code_loss_weight * codes_loss
@@ -288,7 +288,7 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 1:
             val_map(epoch)
             print_log(saver.save(model.module.state_dict(), 'checkpoint'))
         lr_scheduler.step()  # move to here after pytorch1.1.0
