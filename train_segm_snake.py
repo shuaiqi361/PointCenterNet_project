@@ -129,7 +129,7 @@ def main():
     if 'hourglass' in cfg.arch:
         model = get_hourglass[cfg.arch]
     elif 'resdcn' in cfg.arch:
-        model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
+        model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes, dictionary=torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True))
     else:
         raise NotImplementedError
 
@@ -148,7 +148,7 @@ def main():
         torch.cuda.empty_cache()
 
     optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.1)
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.2)
 
     def train(epoch):
         print('\n Epoch: %d' % epoch)
@@ -169,20 +169,18 @@ def main():
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
             codes_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_]
 
-            shape_1 = [_tranpose_and_gather_feature(p, batch['inds']) for p in polys_1]
-            shape_2 = [_tranpose_and_gather_feature(p, batch['inds']) for p in polys_2]
-            shape_3 = [_tranpose_and_gather_feature(p, batch['inds']) for p in shapes_]
-
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             codes_loss = norm_reg_loss(codes_, batch['codes'], batch['ind_masks'])
 
             # shapes_loss = contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'], roll=False)
-            shapes_loss = (nn.functional.l1_loss(shape_1, batch['shapes'], reduction='mean')
-                           + nn.functional.l1_loss(shape_2, batch['shapes'], reduction='mean')
-                           + nn.functional.l1_loss(shape_3, batch['shapes'], reduction='mean')) / 3.
-            loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + \
+            mask = batch['ind_masks'][:, :, None].expand_as(batch['shapes']).float()
+            shapes_loss = (sum([nn.functional.l1_loss(p.view(p.size(0), p.size(1), -1) * mask, batch['shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for p in polys_1])
+                          + sum([nn.functional.l1_loss(p.view(p.size(0), p.size(1), -1) * mask, batch['shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for p in polys_2])
+                          + sum([nn.functional.l1_loss(p.view(p.size(0), p.size(1), -1) * mask, batch['shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for p in shapes_])) / 3.
+
+            loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + \
                    cfg.shape_loss_weight * shapes_loss
 
             optimizer.zero_grad()
@@ -281,7 +279,7 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
             val_map(epoch)
             print(saver.save(model.module.state_dict(), 'checkpoint'))
         lr_scheduler.step(epoch)

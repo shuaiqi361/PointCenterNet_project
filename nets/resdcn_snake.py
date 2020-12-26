@@ -118,6 +118,7 @@ class SnakeResDCN(nn.Module):
         self.max_obj = 128
         self.n_vertices = 32
         self.dict_tensor = dictionary
+
         self.dict_tensor.requires_grad = False
 
         super(SnakeResDCN, self).__init__()
@@ -180,16 +181,16 @@ class SnakeResDCN(nn.Module):
         :param poly: (N, max_obj, n_vertices, 2)
         :param h: spatial dim: width and height of the last feature map, 512 x 512
         :param w:
-        :return: interpolated features (N, C, max_obj, n_vertices)
+        :return: interpolated features (N, C, max_obj, n_vertices) --> (N, max_obj, C, n_vertices)
         """
         bs, c, h, w = fmaps.size()
         obj_polygons = poly.clone()
         obj_polygons[..., 0] = obj_polygons[..., 0] / (w / 2.) - 1  # the grid argument is in the range [-1, 1]
         obj_polygons[..., 1] = obj_polygons[..., 1] / (h / 2.) - 1
 
-        vert_feature = nn.functional.grid_sample(fmaps, grid=obj_polygons, mode='bilinear')
+        vert_feature = nn.functional.grid_sample(fmaps, grid=obj_polygons, mode='bilinear')  # (bs, C, max_obj, n_vertices)
 
-        return vert_feature.transpose(0, 2, 3, 1)
+        return vert_feature.permute(0, 2, 1, 3).contiguous()
 
     def _gather_feature(self, feat, ind, mask=None):
         dim = feat.size(2)
@@ -269,7 +270,7 @@ class SnakeResDCN(nn.Module):
 
             planes = num_filters[i]
             fc = DCN(self.inplanes, planes,
-                     kernel_size=(3, 3), stride=1,
+                     kernel_size=3, stride=1,
                      padding=1, dilation=1, deformable_groups=1)
 
             up = nn.ConvTranspose2d(in_channels=planes,
@@ -321,13 +322,13 @@ class SnakeResDCN(nn.Module):
             obj_regs = obj_regs.view(bs, self.max_obj, 2)
             xs = xs.view(bs, self.max_obj, 1) + obj_regs[:, :, 0:1]
             ys = ys.view(bs, self.max_obj, 1) + obj_regs[:, :, 1:2]
-            gt_center = torch.cat([xs, ys], dim=2).view(bs, self.max_obj, 1, 2)
+            gt_center = torch.cat([xs, ys], dim=2)
 
         # obj_codes = self._tranpose_and_gather_feature(obj_codes, inds)
         obj_codes = obj_codes.view(bs, self.max_obj, 64)
 
         segms = torch.matmul(obj_codes, self.dict_tensor)
-        polys = segms.view(bs, self.max_obj, 32, 2) + gt_center
+        polys = segms.view(bs, self.max_obj, 32, 2) + gt_center.view(bs, self.max_obj, 1, 2)
 
         # first snake
         vertex_feats = self.get_vertex_features(fmap, polys)  # (N, C, max_obj, 32)
@@ -336,7 +337,7 @@ class SnakeResDCN(nn.Module):
             batch_v_feats.append(self.snake_1(vertex_feats[n]).unsqueeze(0))
 
         offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
-        polys_1 = polys + offsets.transpose(0, 2, 3, 1)
+        polys_1 = polys + offsets.permute(0, 1, 3, 2).contiguous()
 
         # second snake
         vertex_feats = self.get_vertex_features(fmap, polys_1)  # (N, C, max_obj, 32)
@@ -345,7 +346,7 @@ class SnakeResDCN(nn.Module):
             batch_v_feats.append(self.snake_2(vertex_feats[n]).unsqueeze(0))
 
         offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
-        polys_2 = polys_1 + offsets.transpose(0, 2, 3, 1)
+        polys_2 = polys_1 + offsets.permute(0, 1, 3, 2).contiguous()
 
         # third snake
         vertex_feats = self.get_vertex_features(fmap, polys_2)  # (N, C, max_obj, 32)
@@ -354,7 +355,7 @@ class SnakeResDCN(nn.Module):
             batch_v_feats.append(self.snake_3(vertex_feats[n]).unsqueeze(0))
 
         offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
-        polys_3 = polys_2 + offsets.transpose(0, 2, 3, 1)
+        polys_3 = polys_2 + offsets.permute(0, 1, 3, 2).contiguous()
 
         out = [[hmap_out, regs_out, w_h_out, codes_out, polys_1, polys_2, polys_3]]
         return out
@@ -378,9 +379,9 @@ resnet_spec = {18: (BasicBlock, [2, 2, 2, 2]),
                152: (Bottleneck, [3, 8, 36, 3])}
 
 
-def get_pose_resdcn(num_layers=50, head_conv=64, num_classes=80):
+def get_pose_resdcn(num_layers=50, head_conv=64, num_classes=80, dictionary=None):
     block_class, layers = resnet_spec[num_layers]
-    model = SnakeResDCN(block_class, layers, head_conv, num_classes)
+    model = SnakeResDCN(block_class, layers, head_conv, num_classes, dictionary=dictionary)
     model.init_weights(num_layers)
     return model
 

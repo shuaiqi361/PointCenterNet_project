@@ -76,7 +76,7 @@ class COCOSEGMSNAKE(data.Dataset):
         self.split = split
         self.dictionary_file = dictionary_file
         self.data_dir = data_dir
-        self.img_dir = os.path.join(self.data_dir, 'images/%s2017' % split)
+        self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
         if split == 'test':
             self.annot_path = os.path.join(self.data_dir, 'annotations', 'image_info_test-dev2017.json')
         else:
@@ -370,5 +370,3 @@ class COCOSEGMSNAKEEVAL(COCOSEGMSNAKE):
             out.append((img_id, {s: {k: torch.from_numpy(sample[s][k]).float()
             if k == 'image' else np.array(sample[s][k]) for k in sample[s]} for s in sample}))
         return out
-
-
