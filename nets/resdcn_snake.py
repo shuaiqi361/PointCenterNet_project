@@ -323,7 +323,7 @@ class SnakeResDCN(nn.Module):
             ys = ys.view(bs, self.max_obj, 1) + obj_regs[:, :, 1:2]
             gt_center = torch.cat([xs, ys], dim=2).view(bs, self.max_obj, 1, 2)
 
-        obj_codes = self._tranpose_and_gather_feature(obj_codes, inds)
+        # obj_codes = self._tranpose_and_gather_feature(obj_codes, inds)
         obj_codes = obj_codes.view(bs, self.max_obj, 64)
 
         segms = torch.matmul(obj_codes, self.dict_tensor)

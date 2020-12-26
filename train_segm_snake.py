@@ -29,7 +29,7 @@ from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
 from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, contour_mapping_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
-from utils.post_process import ctsegm_code_n_offset_decode
+from utils.post_process import ctsegm_code_shape_decode
 
 # Training settings
 parser = argparse.ArgumentParser(description='ResDCN_code_n_offset')
@@ -163,23 +163,25 @@ def main():
             dict_tensor.requires_grad = False
 
             outputs = model(batch['image'], batch['inds'], batch['centers'])
-            hmap, regs, w_h_, codes_, polys_1, poly2_2, shapes_ = zip(*outputs)
+            hmap, regs, w_h_, codes_, polys_1, polys_2, shapes_ = zip(*outputs)
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
             codes_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_]
 
-            # shapes_ = [torch.matmul(c, dict_tensor) + o for c in codes_ for o in offsets_]
-            # shapes_ = torch.matmul(codes_, dict_tensor) + offsets_
+            shape_1 = [_tranpose_and_gather_feature(p, batch['inds']) for p in polys_1]
+            shape_2 = [_tranpose_and_gather_feature(p, batch['inds']) for p in polys_2]
+            shape_3 = [_tranpose_and_gather_feature(p, batch['inds']) for p in shapes_]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             codes_loss = norm_reg_loss(codes_, batch['codes'], batch['ind_masks'])
+
             # shapes_loss = contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'], roll=False)
-            shapes_loss = (nn.functional.l1_loss(polys_1, batch['shapes'], reduction='mean')
-                           + nn.functional.l1_loss(polys_1, batch['shapes'], reduction='mean')
-                           + nn.functional.l1_loss(polys_1, batch['shapes'], reduction='mean')) / 3.
+            shapes_loss = (nn.functional.l1_loss(shape_1, batch['shapes'], reduction='mean')
+                           + nn.functional.l1_loss(shape_2, batch['shapes'], reduction='mean')
+                           + nn.functional.l1_loss(shape_3, batch['shapes'], reduction='mean')) / 3.
             loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + \
                    cfg.shape_loss_weight * shapes_loss
 
@@ -223,10 +225,10 @@ def main():
                         _, _, input_h, input_w = inputs[scale]['image'].shape
                         input_scales[img_id] = {'h': input_h, 'w': input_w}
 
-                    output = model(inputs[scale]['image'])[-1]
+                    hmap, regs, w_h_, _, _, _, shapes_ = model(inputs[scale]['image'])[-1]
+                    output = [hmap, regs, w_h_, shapes_]
 
-                    segms = ctsegm_code_n_offset_decode(*output, torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
-                                                K=cfg.test_topk)
+                    segms = ctsegm_code_shape_decode(*output, K=cfg.test_topk)
                     segms = segms.detach().cpu().numpy().reshape(1, -1, segms.shape[2])[0]
 
                     top_preds = {}

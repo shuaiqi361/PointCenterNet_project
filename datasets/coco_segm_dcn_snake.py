@@ -139,7 +139,6 @@ class COCOSEGMSNAKE(data.Dataset):
             fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
             fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
 
-            # contour_mean = np.mean(fixed_contour, axis=0)
             contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
             if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
                 continue
@@ -168,8 +167,8 @@ class COCOSEGMSNAKE(data.Dataset):
         flipped = False
         if self.split == 'train':
             scale = scale * np.random.choice(self.rand_scales)
-            w_border = get_border(128, width)
-            h_border = get_border(128, height)
+            w_border = get_border(160, width)
+            h_border = get_border(160, height)
             center[0] = np.random.randint(low=w_border, high=width - w_border)
             center[1] = np.random.randint(low=h_border, high=height - h_border)
 
@@ -248,7 +247,7 @@ class COCOSEGMSNAKE(data.Dataset):
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 shapes_[k] = centered_shape.reshape((-1,))
                 codes_[k], _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
-                                         lmbda=self.sparse_alpha, max_iter=80)
+                                         lmbda=self.sparse_alpha, max_iter=60)
                 w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
                           mass_center[0] - bbox[0], bbox[2] - mass_center[0]  # [top, bottom, left, right] distance
                 regs[k] = obj_c - obj_c_int  # quantization error
@@ -348,7 +347,7 @@ class COCOSEGMSNAKEEVAL(COCOSEGMSNAKE):
         segments = self.convert_eval_format(results)
 
         if save_dir is not None:
-            result_json = os.path.join(save_dir, "coco_segm_results.json")
+            result_json = os.path.join(save_dir, "coco_segm_snake_results.json")
             json.dump(segments, open(result_json, "w"))
 
         coco_segms = self.coco.loadRes(segments)
@@ -373,21 +372,3 @@ class COCOSEGMSNAKEEVAL(COCOSEGMSNAKE):
         return out
 
 
-if __name__ == '__main__':
-    from tqdm import tqdm
-    import pickle
-
-    dataset = COCOSEGM('/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17',
-                       '/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/dictionary/train_dict_v32_n64_a0.01.npy',
-                       'train', padding=31)
-    # for d in dataset:
-    #   b1 = d
-    #   pass
-
-    # pass
-    train_loader = torch.utils.data.DataLoader(dataset, batch_size=1,
-                                               shuffle=False, num_workers=0,
-                                               pin_memory=False, drop_last=True)
-
-    for b in tqdm(train_loader):
-        pass
