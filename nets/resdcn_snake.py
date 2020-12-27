@@ -135,9 +135,9 @@ class SnakeResDCN(nn.Module):
         self.deconv_layers = self._make_deconv_layer(3, [256, 128, 64], [4, 4, 4])
 
         # used for snake conv on offsets
-        self.snake_1 = Snake(state_dim=64, feature_dim=64, n_adj=self.snake_adj)
-        self.snake_2 = Snake(state_dim=64, feature_dim=64, n_adj=self.snake_adj)
-        self.snake_3 = Snake(state_dim=64, feature_dim=64, n_adj=self.snake_adj)
+        self.snake_1 = Snake(state_dim=64, feature_dim=64 + 2, n_adj=self.snake_adj)
+        self.snake_2 = Snake(state_dim=64, feature_dim=64 + 2, n_adj=self.snake_adj)
+        self.snake_3 = Snake(state_dim=64, feature_dim=64 + 2, n_adj=self.snake_adj)
 
         if head_conv > 0:
             # heatmap layers
@@ -164,10 +164,13 @@ class SnakeResDCN(nn.Module):
                                       nn.ReLU(inplace=True),
                                       nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, 4, kernel_size=1, bias=True))
-            self.codes = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
-                                       nn.ReLU(inplace=True),
-                                       nn.BatchNorm2d(128),
-                                       nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
+            self.codes = nn.Sequential(nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, 64, kernel_size=1, bias=True))
         else:
             raise NotImplementedError
 
@@ -331,7 +334,8 @@ class SnakeResDCN(nn.Module):
         polys = segms.view(bs, self.max_obj, 32, 2) + gt_center.view(bs, self.max_obj, 1, 2)
 
         # first snake
-        vertex_feats = self.get_vertex_features(fmap, polys).detach().data  # (N, C, max_obj, 32)
+        vertex_feats = self.get_vertex_features(fmap, polys)  # (N, max_obj, C, 32)
+        vertex_feats = torch.cat([vertex_feats, polys - gt_center.view(bs, self.max_obj, 1, 2)], dim=-2).detach()
         batch_v_feats = []
         for n in range(bs):
             batch_v_feats.append(self.snake_1(vertex_feats[n]).unsqueeze(0))
@@ -340,7 +344,8 @@ class SnakeResDCN(nn.Module):
         polys_1 = polys + offsets.permute(0, 1, 3, 2).contiguous()
 
         # second snake
-        vertex_feats = self.get_vertex_features(fmap, polys_1).detach().data  # (N, C, max_obj, 32)
+        vertex_feats = self.get_vertex_features(fmap, polys_1)  # (N, max_obj, C, 32)
+        vertex_feats = torch.cat([vertex_feats, polys_1 - gt_center.view(bs, self.max_obj, 1, 2)], dim=-2).detach()
         batch_v_feats = []
         for n in range(bs):
             batch_v_feats.append(self.snake_2(vertex_feats[n]).unsqueeze(0))
@@ -349,7 +354,8 @@ class SnakeResDCN(nn.Module):
         polys_2 = polys_1 + offsets.permute(0, 1, 3, 2).contiguous()
 
         # third snake
-        vertex_feats = self.get_vertex_features(fmap, polys_2).detach().data  # (N, C, max_obj, 32)
+        vertex_feats = self.get_vertex_features(fmap, polys_2)  # (N, max_obj, C, 32)
+        vertex_feats = torch.cat([vertex_feats, polys_2 - gt_center.view(bs, self.max_obj, 1, 2)], dim=-2).detach()
         batch_v_feats = []
         for n in range(bs):
             batch_v_feats.append(self.snake_3(vertex_feats[n]).unsqueeze(0))
