@@ -335,7 +335,10 @@ class SnakeResDCN(nn.Module):
 
         # first snake
         vertex_feats = self.get_vertex_features(fmap, polys)  # (N, max_obj, C, 32)
-        vertex_feats = torch.cat([vertex_feats, polys - gt_center.view(bs, self.max_obj, 1, 2)], dim=-2).detach()
+        # print(vertex_feats.size())
+        # print()
+        # print((polys - gt_center.view(bs, self.max_obj, 2, 1)).size())
+        vertex_feats = torch.cat([vertex_feats, (polys - gt_center.view(bs, self.max_obj, 1, 2)).permute(0, 1, 3, 2)], dim=-2).detach()
         batch_v_feats = []
         for n in range(bs):
             batch_v_feats.append(self.snake_1(vertex_feats[n]).unsqueeze(0))
@@ -345,7 +348,7 @@ class SnakeResDCN(nn.Module):
 
         # second snake
         vertex_feats = self.get_vertex_features(fmap, polys_1)  # (N, max_obj, C, 32)
-        vertex_feats = torch.cat([vertex_feats, polys_1 - gt_center.view(bs, self.max_obj, 1, 2)], dim=-2).detach()
+        vertex_feats = torch.cat([vertex_feats, (polys_1 - gt_center.view(bs, self.max_obj, 1, 2)).permute(0, 1, 3, 2)], dim=-2).detach()
         batch_v_feats = []
         for n in range(bs):
             batch_v_feats.append(self.snake_2(vertex_feats[n]).unsqueeze(0))
@@ -355,7 +358,7 @@ class SnakeResDCN(nn.Module):
 
         # third snake
         vertex_feats = self.get_vertex_features(fmap, polys_2)  # (N, max_obj, C, 32)
-        vertex_feats = torch.cat([vertex_feats, polys_2 - gt_center.view(bs, self.max_obj, 1, 2)], dim=-2).detach()
+        vertex_feats = torch.cat([vertex_feats, (polys_2 - gt_center.view(bs, self.max_obj, 1, 2)).permute(0, 1, 3, 2)], dim=-2).detach()
         batch_v_feats = []
         for n in range(bs):
             batch_v_feats.append(self.snake_3(vertex_feats[n]).unsqueeze(0))
