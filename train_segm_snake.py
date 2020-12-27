@@ -279,10 +279,10 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
             val_map(epoch)
             print(saver.save(model.module.state_dict(), 'checkpoint'))
-        lr_scheduler.step(epoch)
+        lr_scheduler.step()
 
         epoch_time = (time.time() - start) / 3600. / 24.
         print('ETA:{:.2f} Days'.format((cfg.num_epochs - epoch) * epoch_time))

@@ -331,7 +331,7 @@ class SnakeResDCN(nn.Module):
         polys = segms.view(bs, self.max_obj, 32, 2) + gt_center.view(bs, self.max_obj, 1, 2)
 
         # first snake
-        vertex_feats = self.get_vertex_features(fmap, polys)  # (N, C, max_obj, 32)
+        vertex_feats = self.get_vertex_features(fmap, polys).detach().data  # (N, C, max_obj, 32)
         batch_v_feats = []
         for n in range(bs):
             batch_v_feats.append(self.snake_1(vertex_feats[n]).unsqueeze(0))
@@ -340,7 +340,7 @@ class SnakeResDCN(nn.Module):
         polys_1 = polys + offsets.permute(0, 1, 3, 2).contiguous()
 
         # second snake
-        vertex_feats = self.get_vertex_features(fmap, polys_1)  # (N, C, max_obj, 32)
+        vertex_feats = self.get_vertex_features(fmap, polys_1).detach().data  # (N, C, max_obj, 32)
         batch_v_feats = []
         for n in range(bs):
             batch_v_feats.append(self.snake_2(vertex_feats[n]).unsqueeze(0))
@@ -349,7 +349,7 @@ class SnakeResDCN(nn.Module):
         polys_2 = polys_1 + offsets.permute(0, 1, 3, 2).contiguous()
 
         # third snake
-        vertex_feats = self.get_vertex_features(fmap, polys_2)  # (N, C, max_obj, 32)
+        vertex_feats = self.get_vertex_features(fmap, polys_2).detach().data  # (N, C, max_obj, 32)
         batch_v_feats = []
         for n in range(bs):
             batch_v_feats.append(self.snake_3(vertex_feats[n]).unsqueeze(0))
