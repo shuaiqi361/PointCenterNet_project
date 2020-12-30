@@ -193,7 +193,7 @@ def main():
                         + _reg_loss(shapes_2, batch['shapes'], batch['ind_masks'])
                         + _reg_loss(shapes_3, batch['shapes'], batch['ind_masks'])) / 3.
 
-            loss = 2 * hmap_loss + 1 * occ_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
+            loss = 2 * hmap_loss + 0.0 * occ_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
                    + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
 
             optimizer.zero_grad()
@@ -235,9 +235,9 @@ def main():
                 segmentations = []
                 for scale in inputs:
                     inputs[scale]['image'] = inputs[scale]['image'].to(cfg.device)
-                    if scale == 1. and img_id not in input_scales.keys():  # keep track of the input image Sizes
-                        _, _, input_h, input_w = inputs[scale]['image'].shape
-                        input_scales[img_id] = {'h': input_h, 'w': input_w}
+                    # if scale == 1. and img_id not in input_scales.keys():  # keep track of the input image Sizes
+                    #     _, _, input_h, input_w = inputs[scale]['image'].shape
+                    #     input_scales[img_id] = {'h': input_h, 'w': input_w}
 
                     # dict_tensor = torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True)
                     # dict_tensor.requires_grad = False
