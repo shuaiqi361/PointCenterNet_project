@@ -116,7 +116,7 @@ def _neg_loss_slow(preds, targets):
     return loss
 
 
-def _neg_loss(preds, targets):
+def _neg_loss(preds, targets, ex=4.0):
     ''' Modified focal loss. Exactly the same as CornerNet.
         Runs faster and costs a little bit more memory
         Arguments:
@@ -126,7 +126,7 @@ def _neg_loss(preds, targets):
     pos_inds = targets.eq(1).float()
     neg_inds = targets.lt(1).float()
 
-    neg_weights = torch.pow(1 - targets, 4)
+    neg_weights = torch.pow(1 - targets, ex)
 
     loss = 0
     for pred in preds:

@@ -47,7 +47,7 @@ parser.add_argument('--dictionary_file', type=str)
 parser.add_argument('--dataset', type=str, default='coco', choices=['coco', 'pascal', 'kins'])
 parser.add_argument('--arch', type=str, default='resdcn_50')
 
-parser.add_argument('--img_size', type=int, default=(896, 384))
+parser.add_argument('--img_size', type=str, default='896,384')
 parser.add_argument('--split_ratio', type=float, default=1.0)
 parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
@@ -76,7 +76,7 @@ os.makedirs(cfg.log_dir, exist_ok=True)
 os.makedirs(cfg.ckpt_dir, exist_ok=True)
 
 cfg.lr_step = [int(s) for s in cfg.lr_step.split(',')]
-
+cfg.img_size = tuple([int(s) for s in cfg.img_size.split(',')])
 
 def main():
     saver = create_saver(cfg.local_rank, save_dir=cfg.ckpt_dir)
@@ -117,7 +117,7 @@ def main():
 
     Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else KINS_eval_segm_cmm
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
-                               'val', test_scales=[1.], test_flip=False)
+                               'test', test_scales=[1.], test_flip=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
                                              shuffle=False, num_workers=1, pin_memory=False,
                                              collate_fn=val_dataset.collate_fn)
@@ -178,7 +178,7 @@ def main():
             shapes_3 = [torch.matmul(c, dict_tensor) for c in c_3]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
-            occ_loss = _neg_loss(occ_map, batch['occ_map'])
+            occ_loss = _neg_loss(occ_map, batch['occ_map'], ex=3.0)
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
@@ -206,7 +206,7 @@ def main():
                 print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
                           'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f cmm = %.3f offset = %.3f occ = %.3f' %
                           (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(), cmm_loss.item(),
-                           offsets_loss.item(), occ_loss.item) +
+                           offsets_loss.item(), occ_loss.item()) +
                           ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
 
                 step = len(train_loader) * epoch + batch_idx
