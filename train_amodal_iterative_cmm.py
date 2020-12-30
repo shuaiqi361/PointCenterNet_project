@@ -178,7 +178,7 @@ def main():
             shapes_3 = [torch.matmul(c, dict_tensor) for c in c_3]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
-            occ_loss = _neg_loss(occ_map, batch['occ_map'], ex=3.0)
+            occ_loss = _neg_loss(occ_map, batch['occ_map'], ex=4.0)
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
@@ -299,7 +299,7 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
             val_map(epoch)
             print_log(saver.save(model.module.state_dict(), 'checkpoint'))
         lr_scheduler.step()  # move to here after pytorch1.1.0

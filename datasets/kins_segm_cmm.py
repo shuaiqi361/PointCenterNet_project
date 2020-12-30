@@ -74,6 +74,16 @@ class KINSSEGMCMM(data.Dataset):
 
         print('==> initializing KINS {} data.'.format(split))
         self.coco = coco.COCO(self.annot_path)
+
+        annIds = self.coco.getAnnIds()
+        all_anns = self.coco.loadAnns(ids=annIds)
+        for anno in all_anns:
+            # add some fields for evaluation
+            anno['iscrowd'] = 0
+            anno['segmentation'] = anno['a_segm']  # only evaluate amodal segmentation
+            anno['bbox'] = anno['i_bbox']  # only evaluate inmodal detection
+            anno['area'] = anno['a_area']
+
         self.images = self.coco.getImgIds()
         self.dictionary = np.load(self.dictionary_file)  # type->ndarray, shape (n_coeffs, n_vertices * 2)
 
@@ -106,9 +116,9 @@ class KINSSEGMCMM(data.Dataset):
 
         for anno in annotations:
             # add some fields for evaluation
-            anno['iscrowd'] = 0
-            anno['segmentation'] = anno['a_segm']  # only evaluate amodal segmentation
-            anno['bbox'] = anno['i_bbox']  # only evaluate inmodal detection
+            # anno['iscrowd'] = 0
+            # anno['segmentation'] = anno['a_segm']  # only evaluate amodal segmentation
+            # anno['bbox'] = anno['i_bbox']  # only evaluate inmodal detection
 
             if anno['category_id'] not in KINS_IDS:
                 continue  # excludes 3: person-sitting class for evaluation
