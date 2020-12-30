@@ -19,16 +19,17 @@ import torch.utils.data
 import torch.distributed as dist
 
 from datasets.coco_segm_cmm import COCOSEGMCMM, COCO_eval_segm_cmm
+from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
-from nets.resdcn_iterative_cmm import get_pose_resdcn
+from nets.resdcn_amodal_iterative_cmm import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
 from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss, norm_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
-from utils.post_process import ctsegm_cmm_decode, ctsegm_shift_code_decode
+from utils.post_process import ctsegm_amodal_cmm_decode
 
 # Training settings
 parser = argparse.ArgumentParser(description='simple_centernet_segm_ncmm')
@@ -43,10 +44,10 @@ parser.add_argument('--log_name', type=str, default='test')
 parser.add_argument('--pretrain_checkpoint', type=str)
 parser.add_argument('--dictionary_file', type=str)
 
-parser.add_argument('--dataset', type=str, default='coco', choices=['coco', 'pascal'])
-parser.add_argument('--arch', type=str, default='large_hourglass')
+parser.add_argument('--dataset', type=str, default='coco', choices=['coco', 'pascal', 'kins'])
+parser.add_argument('--arch', type=str, default='resdcn_50')
 
-parser.add_argument('--img_size', type=int, default=512)
+parser.add_argument('--img_size', type=int, default=(896, 384))
 parser.add_argument('--split_ratio', type=float, default=1.0)
 parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
@@ -99,7 +100,7 @@ def main():
 
     print_log('Setting up data...')
     dictionary = np.load(cfg.dictionary_file)
-    Dataset = COCOSEGMCMM if cfg.dataset == 'coco' else PascalVOC
+    Dataset = COCOSEGMCMM if cfg.dataset == 'coco' else KINSSEGMCMM
     train_dataset = Dataset(cfg.data_dir, cfg.dictionary_file,
                             'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,
@@ -114,7 +115,7 @@ def main():
                                                drop_last=True,
                                                sampler=train_sampler if cfg.dist else None)
 
-    Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else PascalVOC_eval
+    Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else KINS_eval_segm_cmm
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
                                'val', test_scales=[1.], test_flip=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
@@ -128,7 +129,8 @@ def main():
                      modules=[2, 2, 2, 2, 2, 4],
                      dictionary=torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device))
     elif 'resdcn' in cfg.arch:
-        model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
+        model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64,
+                                num_classes=train_dataset.num_classes)
     else:
         raise NotImplementedError
 
@@ -147,7 +149,7 @@ def main():
         torch.cuda.empty_cache()
 
     optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.2)
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.1)
 
     def train(epoch):
         print_log('\n Epoch: %d' % epoch)
@@ -162,31 +164,37 @@ def main():
             dict_tensor.requires_grad = False
 
             outputs = model(batch['image'])
-            hmap, regs, w_h_, codes_1, codes_2, codes_3 = zip(*outputs)
+            hmap, regs, w_h_, codes_1, codes_2, codes_3, occ_map, offsets = zip(*outputs)
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
             c_1 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_1]
             c_2 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_2]
             c_3 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_3]
-            # print(c_1[0].size(), dict_tensor.size())
+            offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
             shapes_1 = [torch.matmul(c, dict_tensor) for c in c_1]
             shapes_2 = [torch.matmul(c, dict_tensor) for c in c_2]
             shapes_3 = [torch.matmul(c, dict_tensor) for c in c_3]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
+            occ_loss = _neg_loss(occ_map, batch['occ_map'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
+            offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
             codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
                           + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
                           + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
-            cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=True)
-                        + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=True)
-                        + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=True)) / 3.
 
-            loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
-                   + cfg.code_loss_weight * codes_loss
+            # cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
+            #             + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
+            #             + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
+            cmm_loss = (_reg_loss(shapes_1, batch['shapes'], batch['ind_masks'])
+                        + _reg_loss(shapes_2, batch['shapes'], batch['ind_masks'])
+                        + _reg_loss(shapes_3, batch['shapes'], batch['ind_masks'])) / 3.
+
+            loss = 2 * hmap_loss + 1 * occ_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
+                   + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -196,14 +204,17 @@ def main():
                 duration = time.perf_counter() - tic
                 tic = time.perf_counter()
                 print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
-                      ' hmap_loss= %.3f reg_loss= %.3f w_h_loss= %.3f code_loss= %.3f cmm_loss= %.3f' %
-                      (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(), cmm_loss.item()) +
-                      ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
+                          'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f cmm = %.3f offset = %.3f occ = %.3f' %
+                          (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(), cmm_loss.item(),
+                           offsets_loss.item(), occ_loss.item) +
+                          ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
 
                 step = len(train_loader) * epoch + batch_idx
                 summary_writer.add_scalar('hmap_loss', hmap_loss.item(), step)
+                summary_writer.add_scalar('occ_loss', occ_loss.item(), step)
                 summary_writer.add_scalar('reg_loss', reg_loss.item(), step)
                 summary_writer.add_scalar('w_h_loss', w_h_loss.item(), step)
+                summary_writer.add_scalar('offset_loss', offsets_loss.item(), step)
                 summary_writer.add_scalar('code_loss', codes_loss.item(), step)
                 summary_writer.add_scalar('cmm_loss', cmm_loss.item(), step)
         return
@@ -230,10 +241,10 @@ def main():
 
                     # dict_tensor = torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True)
                     # dict_tensor.requires_grad = False
-                    hmap, regs, w_h_, _, _, codes = model(inputs[scale]['image'])[-1]
-                    output = [hmap, regs, w_h_, codes]
+                    hmap, regs, w_h_, _, _, codes, _, offsets = model(inputs[scale]['image'])[-1]
+                    output = [hmap, regs, w_h_, codes, offsets]
 
-                    segms = ctsegm_shift_code_decode(*output,
+                    segms = ctsegm_amodal_cmm_decode(*output,
                                                      torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
                                                      K=cfg.test_topk)
                     segms = segms.detach().cpu().numpy().reshape(1, -1, segms.shape[2])[0]
@@ -278,7 +289,7 @@ def main():
                 results[img_id] = segms_and_scores
                 speed_list.append(end_image_time - start_image_time)
 
-        eval_results = val_dataset.run_eval(results, input_scales, save_dir=cfg.ckpt_dir)
+        eval_results = val_dataset.run_eval(results, save_dir=cfg.ckpt_dir)
         print_log(eval_results)
         summary_writer.add_scalar('val_mAP/mAP', eval_results[0], epoch)
         print_log('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))
@@ -288,10 +299,10 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
             val_map(epoch)
             print_log(saver.save(model.module.state_dict(), 'checkpoint'))
-        lr_scheduler.step(epoch)  # move to here after pytorch1.1.0
+        lr_scheduler.step()  # move to here after pytorch1.1.0
 
         epoch_time = (time.time() - start) / 3600. / 24.
         print_log('ETA:{:.2f} Days'.format((cfg.num_epochs - epoch) * epoch_time))

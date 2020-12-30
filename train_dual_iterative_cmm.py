@@ -22,7 +22,7 @@ from datasets.coco_segm_cmm import COCOSEGMCMM, COCO_eval_segm_cmm
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
-from nets.resdcn_iterative_cmm import get_pose_resdcn
+from nets.resdcn_dual_iterative_cmm import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -181,9 +181,13 @@ def main():
             codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
                           + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
                           + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
-            cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=True)
-                        + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=True)
-                        + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=True)) / 3.
+
+            # cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
+            #             + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
+            #             + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
+            cmm_loss = (_reg_loss(shapes_1, batch['shapes'], batch['ind_masks'])
+                        + _reg_loss(shapes_2, batch['shapes'], batch['ind_masks'])
+                        + _reg_loss(shapes_3, batch['shapes'], batch['ind_masks'])) / 3.
 
             loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
                    + cfg.code_loss_weight * codes_loss
@@ -278,7 +282,7 @@ def main():
                 results[img_id] = segms_and_scores
                 speed_list.append(end_image_time - start_image_time)
 
-        eval_results = val_dataset.run_eval(results, input_scales, save_dir=cfg.ckpt_dir)
+        eval_results = val_dataset.run_eval(results, save_dir=cfg.ckpt_dir)
         print_log(eval_results)
         summary_writer.add_scalar('val_mAP/mAP', eval_results[0], epoch)
         print_log('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))
@@ -288,10 +292,10 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 1:
             val_map(epoch)
             print_log(saver.save(model.module.state_dict(), 'checkpoint'))
-        lr_scheduler.step(epoch)  # move to here after pytorch1.1.0
+        lr_scheduler.step()  # move to here after pytorch1.1.0
 
         epoch_time = (time.time() - start) / 3600. / 24.
         print_log('ETA:{:.2f} Days'.format((cfg.num_epochs - epoch) * epoch_time))
