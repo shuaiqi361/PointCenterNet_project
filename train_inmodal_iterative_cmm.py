@@ -28,7 +28,7 @@ from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
 from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss, norm_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
-from utils.post_process import ctsegm_amodal_cmm_decode
+from utils.post_process import ctsegm_amodal_cmm_decode, ctsegm_shift_code_decode
 
 # Training settings
 parser = argparse.ArgumentParser(description='inmodal_cmm')
@@ -163,14 +163,14 @@ def main():
             dict_tensor.requires_grad = False
 
             outputs = model(batch['image'])
-            hmap, regs, w_h_, codes_1, codes_2, codes_3, offsets = zip(*outputs)
+            hmap, regs, w_h_, codes_1, codes_2, codes_3 = zip(*outputs)
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
             c_1 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_1]
             c_2 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_2]
             c_3 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_3]
-            offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
+            # offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
             shapes_1 = [torch.matmul(c, dict_tensor) for c in c_1]
             shapes_2 = [torch.matmul(c, dict_tensor) for c in c_2]
@@ -180,7 +180,7 @@ def main():
             # occ_loss = _neg_loss(occ_map, batch['occ_map'], ex=4.0)
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
-            offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
+            # offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
             codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
                           + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
                           + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
@@ -193,7 +193,7 @@ def main():
             #             + _reg_loss(shapes_3, batch['shapes'], batch['ind_masks'])) / 3.
 
             loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
-                   + cfg.code_loss_weight * codes_loss + 1.0 * offsets_loss
+                   + cfg.code_loss_weight * codes_loss  # + 1.0 * offsets_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -203,9 +203,8 @@ def main():
                 duration = time.perf_counter() - tic
                 tic = time.perf_counter()
                 print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
-                          'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f cmm = %.3f offset = %.3f' %
-                          (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(), cmm_loss.item(),
-                           offsets_loss.item()) +
+                          'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f cmm = %.3f' %
+                          (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(), cmm_loss.item()) +
                           ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
 
                 step = len(train_loader) * epoch + batch_idx
@@ -213,7 +212,7 @@ def main():
                 # summary_writer.add_scalar('occ_loss', occ_loss.item(), step)
                 summary_writer.add_scalar('reg_loss', reg_loss.item(), step)
                 summary_writer.add_scalar('w_h_loss', w_h_loss.item(), step)
-                summary_writer.add_scalar('offset_loss', offsets_loss.item(), step)
+                # summary_writer.add_scalar('offset_loss', offsets_loss.item(), step)
                 summary_writer.add_scalar('code_loss', codes_loss.item(), step)
                 summary_writer.add_scalar('cmm_loss', cmm_loss.item(), step)
         return
@@ -240,10 +239,14 @@ def main():
 
                     # dict_tensor = torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True)
                     # dict_tensor.requires_grad = False
-                    hmap, regs, w_h_, _, _, codes, offsets = model(inputs[scale]['image'])[-1]
-                    output = [hmap, regs, w_h_, codes, offsets]
+                    # hmap, regs, w_h_, _, _, codes, offsets = model(inputs[scale]['image'])[-1]
+                    hmap, regs, w_h_, _, _, codes = model(inputs[scale]['image'])[-1]
+                    output = [hmap, regs, w_h_, codes]
 
-                    segms = ctsegm_amodal_cmm_decode(*output,
+                    # segms = ctsegm_amodal_cmm_decode(*output,
+                    #                                  torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
+                    #                                  K=cfg.test_topk)
+                    segms = ctsegm_shift_code_decode(*output,
                                                      torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
                                                      K=cfg.test_topk)
                     segms = segms.detach().cpu().numpy().reshape(1, -1, segms.shape[2])[0]
