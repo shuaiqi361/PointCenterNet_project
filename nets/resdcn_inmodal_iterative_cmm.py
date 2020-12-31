@@ -164,7 +164,7 @@ class PoseResNet(nn.Module):
             self.w_h_ = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
                                       nn.BatchNorm2d(head_conv),
-                                      nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
+                                      nn.Conv2d(head_conv, 4, kernel_size=1, bias=True))
 
             # -------- inmodal features
             self.occ = nn.Sequential(nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=True),
