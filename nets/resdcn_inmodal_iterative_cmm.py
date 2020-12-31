@@ -167,17 +167,26 @@ class PoseResNet(nn.Module):
                                       nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
 
             # -------- inmodal features
-            self.occ = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+            self.occ = nn.Sequential(nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=True),
                                      nn.ReLU(inplace=True),
-                                     nn.BatchNorm2d(head_conv),
-                                     DCN(head_conv, head_conv, kernel_size=3, padding=1, dilation=1,
-                                         deformable_groups=1),
+                                     nn.BatchNorm2d(128),
+                                     nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=True),
                                      nn.ReLU(inplace=True),
-                                     nn.BatchNorm2d(head_conv),
-                                     DCN(head_conv, head_conv, kernel_size=3, padding=1, dilation=1,
-                                         deformable_groups=1),
+                                     nn.BatchNorm2d(128),
+                                     nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=True),
                                      nn.ReLU(inplace=True),
                                      nn.BatchNorm2d(head_conv))
+            # self.occ = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+            #                          nn.ReLU(inplace=True),
+            #                          nn.BatchNorm2d(head_conv),
+            #                          DCN(head_conv, head_conv, kernel_size=3, padding=1, dilation=1,
+            #                              deformable_groups=1),
+            #                          nn.ReLU(inplace=True),
+            #                          nn.BatchNorm2d(head_conv),
+            #                          DCN(head_conv, head_conv, kernel_size=3, padding=1, dilation=1,
+            #                              deformable_groups=1),
+            #                          nn.ReLU(inplace=True),
+            #                          nn.BatchNorm2d(head_conv))
 
             # self.occ_map = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
             #                              nn.ReLU(inplace=True),
