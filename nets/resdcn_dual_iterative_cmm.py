@@ -130,44 +130,34 @@ class PoseResNet(nn.Module):
         self.cls_conv = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
                                       nn.BatchNorm2d(128),
-                                      nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=True),
+                                      nn.Conv2d(128, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
-                                      nn.BatchNorm2d(128),
-                                      nn.Conv2d(128, head_conv, kernel_size=1, bias=True))
+                                      nn.BatchNorm2d(head_conv))
         self.reg_conv = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
                                       nn.BatchNorm2d(128),
-                                      nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=True),
+                                      nn.Conv2d(128, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
-                                      nn.BatchNorm2d(128),
-                                      nn.Conv2d(128, head_conv, kernel_size=1, bias=True))
+                                      nn.BatchNorm2d(head_conv))
 
         if head_conv > 0:
             # heatmap layers
-            self.hmap = nn.Sequential(nn.ReLU(inplace=True),
-                                      nn.BatchNorm2d(head_conv),
-                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+            self.hmap = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
                                       nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, num_classes, kernel_size=1, bias=True))
             self.hmap[-1].bias.data.fill_(-2.19)
             # regression layers
-            self.regs = nn.Sequential(nn.ReLU(inplace=True),
-                                      nn.BatchNorm2d(head_conv),
-                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+            self.regs = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
                                       nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
-            self.w_h_ = nn.Sequential(nn.ReLU(inplace=True),
-                                      nn.BatchNorm2d(head_conv),
-                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+            self.w_h_ = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
                                       nn.BatchNorm2d(head_conv),
                                       nn.Conv2d(head_conv, 4, kernel_size=1, bias=True))
 
-            self.codes_1 = nn.Sequential(nn.ReLU(inplace=True),
-                                         nn.BatchNorm2d(head_conv),
-                                         nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=True),
+            self.codes_1 = nn.Sequential(nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.BatchNorm2d(128),
                                          nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
