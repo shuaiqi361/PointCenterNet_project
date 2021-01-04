@@ -24,6 +24,7 @@ from datasets.pascal import PascalVOC, PascalVOC_eval
 from nets.hourglass_segm_shift_code import get_hourglass
 from nets.resdcn_interative_code import get_pose_resdcn
 from nets.resnet_shift_code import get_pose_resnet
+from nets.resnet_fpn_iterative_code import get_fpn_resnet
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -131,6 +132,8 @@ def main():
         model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
     elif 'resnet' in cfg.arch:
         model = get_pose_resnet(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
+    elif 'resfpn' in cfg.arch:
+        model = get_fpn_resnet(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
     else:
         raise NotImplementedError
 
@@ -149,7 +152,7 @@ def main():
         torch.cuda.empty_cache()
 
     optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.1)
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.2)
 
     def train(epoch):
         print('\n Epoch: %d' % epoch)

@@ -1,4 +1,5 @@
 import os
+import math
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
@@ -88,17 +89,44 @@ class Bottleneck(nn.Module):
 
 
 class PyramidFeatures(nn.Module):
-    def __init__(self, c3_size, c4_size, c5_size, feature_size=256):
+    def __init__(self, c3_size, c4_size, c5_size, c6_size, feature_size=256):
         super(PyramidFeatures, self).__init__()
+
+        self.P6_1 = nn.Conv2d(c6_size, feature_size, kernel_size=1, stride=1, padding=0)
+        # self.P6_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.P6_upsampled = nn.ConvTranspose2d(in_channels=feature_size,
+                                out_channels=feature_size,
+                                kernel_size=3,
+                                stride=2,
+                                padding=1,
+                                output_padding=1,
+                                bias=False)
+        fill_up_weights(self.P6_upsampled)
 
         # upsample C5 to get P5 from the FPN paper
         self.P5_1 = nn.Conv2d(c5_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P5_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        # self.P5_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.P5_upsampled = nn.ConvTranspose2d(in_channels=feature_size,
+                                out_channels=feature_size,
+                                kernel_size=3,
+                                stride=2,
+                                padding=1,
+                                output_padding=1,
+                                bias=False)
+        fill_up_weights(self.P5_upsampled)
         # self.P5_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # add P5 elementwise to C4
         self.P4_1 = nn.Conv2d(c4_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P4_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        # self.P4_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.P4_upsampled = nn.ConvTranspose2d(in_channels=feature_size,
+                                out_channels=feature_size,
+                                kernel_size=3,
+                                stride=2,
+                                padding=1,
+                                output_padding=1,
+                                bias=False)
+        fill_up_weights(self.P4_upsampled)
         # self.P4_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # add P4 elementwise to C3
@@ -112,8 +140,12 @@ class PyramidFeatures(nn.Module):
         # self.P7_1 = nn.ReLU()
         # self.P7_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
 
-    def forward(self, c3, c4, c5):
+    def forward(self, c3, c4, c5, c6):
+        P6_x = self.P6_1(c6)
+        P6_upsampled_x = self.P6_upsampled(P6_x)
+
         P5_x = self.P5_1(c5)
+        P5_x = P6_upsampled_x + P5_x
         P5_upsampled_x = self.P5_upsampled(P5_x)
         # P5_x = self.P5_2(P5_x)
 
@@ -134,6 +166,24 @@ class PyramidFeatures(nn.Module):
         # return [P3_x, P4_x, P5_x, P6_x, P7_x]
         return P3_x
 
+def fill_up_weights(up):
+    w = up.weight.data
+    f = math.ceil(w.size(2) / 2)
+    c = (2 * f - 1 - f % 2) / (2. * f)
+    for i in range(w.size(2)):
+        for j in range(w.size(3)):
+            w[0, 0, i, j] = (1 - math.fabs(i / f - c)) * (1 - math.fabs(j / f - c))
+    for c in range(1, w.size(0)):
+        w[c, 0, :, :] = w[0, 0, :, :]
+
+def fill_fc_weights(layers):
+    for m in layers.modules():
+        if isinstance(m, nn.Conv2d):
+            # nn.init.normal_(m.weight, std=0.001)
+            nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
+            # nn.init.xavier_normal_(m.weight.data)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
 class FPNResNet(nn.Module):
     def __init__(self, block, layers, head_conv, num_classes):
@@ -153,31 +203,68 @@ class FPNResNet(nn.Module):
 
         # used for deconv layers
         # self.deconv_layers = self._make_deconv_layer(3, [256, 256, 256], [4, 4, 4])
-        self.fpn_layers = PyramidFeatures(128, 256, 512, feature_size=256)
+        self.fpn_layers = PyramidFeatures(256, 512, 1024, 2048, feature_size=256)
 
         if head_conv > 0:
             # heatmap layers
-            self.hmap = nn.Sequential(nn.Conv2d(256, head_conv, kernel_size=3, padding=1),
+            self.hmap = nn.Sequential(nn.Conv2d(256, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
-                                      nn.Conv2d(head_conv, num_classes, kernel_size=1))
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, num_classes, kernel_size=1, bias=True))
             self.hmap[-1].bias.data.fill_(-2.19)
             # regression layers
-            self.regs = nn.Sequential(nn.Conv2d(256, head_conv, kernel_size=3, padding=1),
+            self.regs = nn.Sequential(nn.Conv2d(256, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
-                                      nn.Conv2d(head_conv, 2, kernel_size=1))
-            self.w_h_ = nn.Sequential(nn.Conv2d(256, head_conv, kernel_size=3, padding=1),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
-                                      nn.Conv2d(head_conv, 4, kernel_size=1))
-            self.codes_ = nn.Sequential(nn.Conv2d(256, head_conv, kernel_size=3, padding=1),
-                                        nn.ReLU(inplace=True),
-                                        nn.Conv2d(head_conv, 64, kernel_size=1))
-        else:
-            # heatmap layers
-            self.hmap = nn.Conv2d(in_channels=256, out_channels=num_classes, kernel_size=1)
-            # regression layers
-            self.regs = nn.Conv2d(in_channels=256, out_channels=2, kernel_size=1)
-            self.w_h_ = nn.Conv2d(in_channels=256, out_channels=4, kernel_size=1)
-            self.codes_ = nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1)
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
+            self.w_h_ = nn.Sequential(nn.Conv2d(256, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.ReLU(inplace=True),
+                                      nn.BatchNorm2d(head_conv),
+                                      nn.Conv2d(head_conv, 4, kernel_size=1, bias=True))
+
+            self.codes_1 = nn.Sequential(nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(128),
+                                         nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
+            self.compress_1 = nn.Sequential(nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(64),
+                                         nn.Conv2d(64, 64, kernel_size=1, padding=0, bias=True))
+            self.codes_2 = nn.Sequential(nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(64),
+                                         nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(128),
+                                         nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
+            self.compress_2 = nn.Sequential(nn.ReLU(inplace=True),
+                                            nn.BatchNorm2d(64),
+                                            nn.Conv2d(64, 64, kernel_size=1, padding=0, bias=True))
+            self.codes_3 = nn.Sequential(nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(64),
+                                         nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(128),
+                                         nn.Conv2d(128, 64, kernel_size=1, padding=0, bias=True))
+            self.compress_3 = nn.Sequential(nn.ReLU(inplace=True),
+                                            nn.BatchNorm2d(64),
+                                            nn.Conv2d(64, 64, kernel_size=1, padding=0, bias=True))
+
+        fill_fc_weights(self.regs)
+        fill_fc_weights(self.w_h_)
+        fill_fc_weights(self.codes_1)
+        fill_fc_weights(self.codes_2)
+        fill_fc_weights(self.codes_3)
+        fill_fc_weights(self.compress_1)
+        fill_fc_weights(self.compress_2)
+        fill_fc_weights(self.compress_3)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -203,29 +290,20 @@ class FPNResNet(nn.Module):
         x2 = self.layer2(x1)
         x3 = self.layer3(x2)
         x4 = self.layer4(x3)
+        # print(x1.size(), x2.size(), x3.size(), x4.size())
 
-        x = self.fpn_layers(x2, x3, x4)
-        out = [[self.hmap(x), self.regs(x), self.w_h_(x), self.codes_(x)]]
+        x = self.fpn_layers(x1, x2, x3, x4)
+
+        xc_1 = self.compress_1(self.codes_1(x))
+        xc_2 = self.compress_2(self.codes_2(xc_1) + xc_1)
+        xc_3 = self.compress_3(self.codes_3(xc_2) + xc_2)
+
+        out = [[self.hmap(x), self.regs(x), self.w_h_(x), xc_1, xc_2, xc_3]]
+
+        # out = [[self.hmap(x), self.regs(x), self.w_h_(x), self.codes_(x)]]
         return out
 
     def init_weights(self, num_layers):
-        for m in self.deconv_layers.modules():
-            if isinstance(m, nn.ConvTranspose2d):
-                nn.init.normal_(m.weight, std=0.001)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-        for m in self.hmap.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.constant_(m.bias, -2.19)
-        for m in self.regs.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.normal_(m.weight, std=0.001)
-                nn.init.constant_(m.bias, 0)
-        for m in self.w_h_.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.normal_(m.weight, std=0.001)
-                nn.init.constant_(m.bias, 0)
         url = model_urls['resnet{}'.format(num_layers)]
         pretrained_state_dict = model_zoo.load_url(url)
         print('=> loading pretrained model {}'.format(url))
