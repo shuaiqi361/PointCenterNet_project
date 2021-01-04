@@ -164,7 +164,7 @@ class PoseResNet(nn.Module):
             self.w_h_ = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                       nn.ReLU(inplace=True),
                                       nn.BatchNorm2d(head_conv),
-                                      nn.Conv2d(head_conv, 4, kernel_size=1, bias=True))
+                                      nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
 
             # -------- inmodal features
             self.occ = nn.Sequential(nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=True),
@@ -176,11 +176,10 @@ class PoseResNet(nn.Module):
                                      nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=True),
                                      nn.ReLU(inplace=True),
                                      nn.BatchNorm2d(head_conv))
-            # self.occ = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+            # self.occ = nn.Sequential(DCN(head_conv, head_conv, kernel_size=3, padding=1, dilation=1, deformable_groups=1),
             #                          nn.ReLU(inplace=True),
             #                          nn.BatchNorm2d(head_conv),
-            #                          DCN(head_conv, head_conv, kernel_size=3, padding=1, dilation=1,
-            #                              deformable_groups=1),
+            #                          nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
             #                          nn.ReLU(inplace=True),
             #                          nn.BatchNorm2d(head_conv),
             #                          DCN(head_conv, head_conv, kernel_size=3, padding=1, dilation=1,
@@ -193,10 +192,10 @@ class PoseResNet(nn.Module):
             #                              nn.BatchNorm2d(head_conv),
             #                              nn.Conv2d(head_conv, 1, kernel_size=1, padding=0, bias=True))
 
-            # self.offsets = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-            #                              nn.ReLU(inplace=True),
-            #                              nn.BatchNorm2d(head_conv),
-            #                              nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
+            self.offsets = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                         nn.ReLU(inplace=True),
+                                         nn.BatchNorm2d(head_conv),
+                                         nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
 
             self.codes_1 = nn.Sequential(nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
@@ -226,8 +225,8 @@ class PoseResNet(nn.Module):
 
         fill_fc_weights(self.regs)
         fill_fc_weights(self.w_h_)
-        # fill_fc_weights(self.occ_map)
-        # fill_fc_weights(self.offsets)
+        fill_fc_weights(self.occ)
+        fill_fc_weights(self.offsets)
         fill_fc_weights(self.codes_1)
         fill_fc_weights(self.codes_2)
         fill_fc_weights(self.codes_3)
@@ -316,13 +315,13 @@ class PoseResNet(nn.Module):
         # occ_map_out = self.occ_map(occ_feats)
 
         in_cls = inmodal_x + occ_feats
-        # offsets = self.offsets(in_cls)
+        offsets = self.offsets(in_cls)
 
         xc_1 = self.compress_1(self.codes_1(in_cls) + in_cls)
         xc_2 = self.compress_2(self.codes_2(xc_1) + xc_1)
         xc_3 = self.compress_3(self.codes_3(xc_2) + xc_2)
 
-        out = [[self.hmap(inmodal_x), self.regs(inmodal_x), self.w_h_(inmodal_x), xc_1, xc_2, xc_3]]
+        out = [[self.hmap(inmodal_x), self.regs(inmodal_x), self.w_h_(inmodal_x), xc_1, xc_2, xc_3, offsets]]
         return out
 
     def init_weights(self, num_layers):

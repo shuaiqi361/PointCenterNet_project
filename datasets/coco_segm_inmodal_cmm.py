@@ -203,9 +203,9 @@ class COCOSEGMCMM(data.Dataset):
         trans_fmap = get_affine_transform(center, scale, 0, [self.fmap_size['w'], self.fmap_size['h']])
 
         hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
-        w_h_ = np.zeros((self.max_objs, 4), dtype=np.float32)  # width and height of inmodal bboxes
+        w_h_ = np.zeros((self.max_objs, 2), dtype=np.float32)  # width and height of inmodal bboxes
         shapes_ = np.zeros((self.max_objs, self.n_vertices * 2), dtype=np.float32)  # gt amodal segmentation polygons
-        # center_offsets = np.zeros((self.max_objs, 2), dtype=np.float32)  # gt amodal mass centers to inmodal bbox center
+        center_offsets = np.zeros((self.max_objs, 2), dtype=np.float32)  # gt amodal mass centers to inmodal bbox center
         codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)
         regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for offsets of shape center
         inds = np.zeros((self.max_objs,), dtype=np.int64)
@@ -250,19 +250,19 @@ class COCOSEGMCMM(data.Dataset):
             centered_shape = indexed_shape - mass_center
 
             if h > 0 and w > 0:
-                # obj_c = np.array([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2], dtype=np.float32)
-                obj_c = mass_center
+                obj_c = np.array([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2], dtype=np.float32)
+                # obj_c = mass_center
                 obj_c_int = obj_c.astype(np.int32)
 
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 shapes_[k] = centered_shape.reshape((1, -1))
-                # center_offsets[k] = mass_center - obj_c
+                center_offsets[k] = mass_center - obj_c
                 codes_[k], _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
                                          lmbda=self.sparse_alpha, max_iter=60)
-                # w_h_[k] = 1. * w, 1. * h
-                w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
-                          mass_center[0] - bbox[0], bbox[2] - mass_center[0]  # [top, bottom, left, right] distance
+                w_h_[k] = 1. * w, 1. * h
+                # w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
+                #           mass_center[0] - bbox[0], bbox[2] - mass_center[0]  # [top, bottom, left, right] distance
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
                 ind_masks[k] = 1
@@ -281,7 +281,7 @@ class COCOSEGMCMM(data.Dataset):
         # cv2.waitKey()
         # -----------------------------------debug---------------------------------
 
-        return {'image': img, 'shapes': shapes_, 'codes': codes_,
+        return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
                 'c': center, 's': scale, 'img_id': img_id}
 
