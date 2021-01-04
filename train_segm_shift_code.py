@@ -22,7 +22,8 @@ from datasets.coco_segm_shift_code import COCOSEGMSHIFT, COCO_eval_segm_shift
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.hourglass_segm_shift_code import get_hourglass
-# from nets.resdcn_shift_code import get_pose_resdcn
+from nets.resnet_fpn import get_fpn_resnet
+from nets.resdcn_shift_code import get_pose_resdcn
 from nets.resnet_shift_code import get_pose_resnet
 
 from utils.utils import _tranpose_and_gather_feature, load_model
@@ -127,10 +128,12 @@ def main():
     print('Creating model...')
     if 'hourglass' in cfg.arch:
         model = get_hourglass[cfg.arch]
-    # elif 'resdcn' in cfg.arch:
-    #     model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), num_classes=train_dataset.num_classes)
+    elif 'resdcn' in cfg.arch:
+        model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
     elif 'resnet' in cfg.arch:
         model = get_pose_resnet(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
+    elif 'resnetfpn' in cfg.arch:
+        model = get_fpn_resnet(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64, num_classes=train_dataset.num_classes)
     else:
         raise NotImplementedError
 
