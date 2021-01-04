@@ -175,12 +175,12 @@ def main():
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
-            # codes_loss = (norm_reg_loss(codes_1, batch['codes'], batch['ind_masks'])
-            #               + norm_reg_loss(codes_2, batch['codes'], batch['ind_masks'])
-            #               + norm_reg_loss(codes_3, batch['codes'], batch['ind_masks'])) / 3.
-            codes_loss = (mse_reg_loss(codes_1, batch['codes'], batch['ind_masks'])
-                          + mse_reg_loss(codes_2, batch['codes'], batch['ind_masks'])
-                          + mse_reg_loss(codes_3, batch['codes'], batch['ind_masks'])) / 3.
+            codes_loss = (norm_reg_loss(codes_1, batch['codes'], batch['ind_masks'])
+                          + norm_reg_loss(codes_2, batch['codes'], batch['ind_masks'])
+                          + norm_reg_loss(codes_3, batch['codes'], batch['ind_masks'])) / 3.
+            # codes_loss = (mse_reg_loss(codes_1, batch['codes'], batch['ind_masks'])
+            #               + mse_reg_loss(codes_2, batch['codes'], batch['ind_masks'])
+            #               + mse_reg_loss(codes_3, batch['codes'], batch['ind_masks'])) / 3.
             loss = 1. * hmap_loss + 1. * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss
 
             optimizer.zero_grad()
