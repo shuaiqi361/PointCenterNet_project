@@ -54,7 +54,7 @@ class KINSSEGMCMM(data.Dataset):
         if split == 'train':
             self.split = split
         else:
-            self.split == 'test'
+            self.split = 'test'
         self.dictionary_file = dictionary_file
         self.data_dir = data_dir
         self.naming = {'train': 'training', 'test': 'testing'}
