@@ -193,7 +193,7 @@ def main():
             #             + _reg_loss(shapes_3, batch['shapes'], batch['ind_masks'])) / 3.
 
             loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
-                   + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
+                   + cfg.code_loss_weight * codes_loss + 1 * offsets_loss
 
             optimizer.zero_grad()
             loss.backward()

@@ -84,7 +84,7 @@ class KINSSEGMCMM(data.Dataset):
             # add some fields for evaluation
             anno['iscrowd'] = 0
             anno['segmentation'] = anno['a_segm']  # only evaluate amodal segmentation
-            anno['bbox'] = anno['a_bbox']  # only evaluate inmodal detection
+            anno['bbox'] = anno['i_bbox']  # only evaluate inmodal detection
             anno['area'] = anno['a_area']
 
         self.images = self.coco.getImgIds()
