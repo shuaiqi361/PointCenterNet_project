@@ -77,7 +77,9 @@ os.makedirs(cfg.ckpt_dir, exist_ok=True)
 cfg.lr_step = [int(s) for s in cfg.lr_step.split(',')]
 cfg.img_size = tuple([int(s) for s in cfg.img_size.split(',')])
 
+
 def main():
+    best_mAP = 0.0
     saver = create_saver(cfg.local_rank, save_dir=cfg.ckpt_dir)
     logger = create_logger(cfg.local_rank, save_dir=cfg.log_dir)
     summary_writer = create_summary(cfg.local_rank, log_dir=cfg.log_dir)
@@ -193,7 +195,7 @@ def main():
             #             + _reg_loss(shapes_3, batch['shapes'], batch['ind_masks'])) / 3.
 
             loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
-                   + cfg.code_loss_weight * codes_loss + 1 * offsets_loss
+                   + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -204,7 +206,8 @@ def main():
                 tic = time.perf_counter()
                 print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
                           'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f cmm = %.3f offsets = %.3f' %
-                          (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(), cmm_loss.item(), offsets_loss.item()) +
+                          (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(), cmm_loss.item(),
+                           offsets_loss.item()) +
                           ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
 
                 step = len(train_loader) * epoch + batch_idx
@@ -296,14 +299,19 @@ def main():
         summary_writer.add_scalar('val_mAP/mAP', eval_results[0], epoch)
         print_log('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))
 
+        return eval_results[0]
+
     print_log('Starting training...')
     for epoch in range(1, cfg.num_epochs + 1):
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 1:
-            val_map(epoch)
-            print_log(saver.save(model.module.state_dict(), 'checkpoint'))
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
+            stat = val_map(epoch)
+            if stat > best_mAP:
+                print('Overall mAP is improving ...')
+                print_log(saver.save(model.module.state_dict(), 'checkpoint'))
+
         lr_scheduler.step()  # move to here after pytorch1.1.0
 
         epoch_time = (time.time() - start) / 3600. / 24.

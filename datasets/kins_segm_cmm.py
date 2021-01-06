@@ -67,7 +67,7 @@ class KINSSEGMCMM(data.Dataset):
         self.down_ratio = 4
         self.img_size = {'h': img_size[1], 'w': img_size[0]}
         self.fmap_size = {'h': img_size[1] // self.down_ratio, 'w': img_size[0] // self.down_ratio}  # (224, 96)
-        self.rand_scales = np.arange(0.3, 1.0, 0.1)
+        self.rand_scales = np.arange(0.4, 1.0, 0.1)
         self.gaussian_iou = 0.7
         self.max_occ = 4
 
@@ -167,8 +167,8 @@ class KINSSEGMCMM(data.Dataset):
         flipped = False
         if self.split == 'train':
             scale = scale * np.random.choice(self.rand_scales)
-            w_border = get_border(320, width)
-            h_border = get_border(160, height)
+            w_border = get_border(160, width)
+            h_border = get_border(80, height)
             center[0] = np.random.randint(low=w_border, high=width - w_border)
             center[1] = np.random.randint(low=h_border, high=height - h_border)
 
@@ -295,7 +295,7 @@ class KINSSEGMCMM(data.Dataset):
 
 
 class KINS_eval_segm_cmm(KINSSEGMCMM):
-    def __init__(self, data_dir, dictionary_file, split, test_scales=(2,), test_flip=False, fix_size=False, padding=31):
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=31):
         super(KINS_eval_segm_cmm, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales
