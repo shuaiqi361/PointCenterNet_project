@@ -311,6 +311,7 @@ def main():
             if stat > best_mAP:
                 print('Overall mAP is improving ...')
                 print_log(saver.save(model.module.state_dict(), 'checkpoint'))
+                best_mAP = stat
 
         lr_scheduler.step()  # move to here after pytorch1.1.0
 
