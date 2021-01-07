@@ -366,6 +366,52 @@ def ctsegm_amodal_cmm_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, K=1
     return segmentations
 
 
+def ctsegm_amodal_cmm_whiten_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, code_stat, K=100):
+    batch, cat, height, width = hmap.shape
+    hmap = torch.sigmoid(hmap)
+
+    # if flip test
+    if batch > 1:
+        hmap = (hmap[0:1] + flip_tensor(hmap[1:2])) / 2
+        w_h_ = (w_h_[0:1] + flip_tensor(w_h_[1:2])) / 2
+        regs = regs[0:1]
+        codes_ = codes_[0:1]
+        offsets_ = offsets_[0:1]
+
+    batch = 1
+    hmap = _nms(hmap)  # perform nms on heatmaps
+    scores, inds, clses, ys, xs = _topk(hmap, K=K)
+
+    regs = _tranpose_and_gather_feature(regs, inds)
+    regs = regs.view(batch, K, 2)
+    xs = xs.view(batch, K, 1) + regs[:, :, 0:1]
+    ys = ys.view(batch, K, 1) + regs[:, :, 1:2]
+
+    w_h_ = _tranpose_and_gather_feature(w_h_, inds)
+    w_h_ = w_h_.view(batch, K, 2)
+
+    codes_ = _tranpose_and_gather_feature(codes_, inds)
+    codes_ = codes_.view(batch, K, 64)
+
+    clses = clses.view(batch, K, 1).float()
+    scores = scores.view(batch, K, 1)
+
+    bboxes = torch.cat([xs - w_h_[..., 0:1] / 2,
+                        ys - w_h_[..., 1:2] / 2,
+                        xs + w_h_[..., 0:1] / 2,
+                        ys + w_h_[..., 1:2] / 2], dim=2)
+
+    offsets_ = _tranpose_and_gather_feature(offsets_, inds)
+    codes_ = codes_ * code_stat[1].view(1, 1, -1) + code_stat[0].view(1, 1, -1)  # recover the original unnormalized codes
+
+    segms = torch.matmul(codes_, dictionary)
+    segms = segms.view(batch, K, 32, 2) + offsets_.view(batch, K, 1, 2) + \
+            torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)
+    segmentations = torch.cat([segms.view(batch, K, -1), bboxes, scores, clses], dim=2)
+
+    return segmentations
+
+
 def ctsegm_code_n_offset_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, K=100):
     batch, cat, height, width = hmap.shape
     hmap = torch.sigmoid(hmap)

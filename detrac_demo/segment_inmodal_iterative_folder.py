@@ -78,7 +78,10 @@ def switch_tuple(input_tuple):
 nice_colors = {
     'person': switch_tuple(RGB_DICT['orange']), 'car': switch_tuple(RGB_DICT['green']),
     'bus': switch_tuple(RGB_DICT['lime']), 'truck': switch_tuple(RGB_DICT['olive']),
-    'bicycle': switch_tuple(RGB_DICT['maroon']), 'motorcycle': switch_tuple(RGB_DICT['fuchsia'])
+    'bicycle': switch_tuple(RGB_DICT['maroon']), 'motorcycle': switch_tuple(RGB_DICT['fuchsia']),
+    'cyclist': switch_tuple(RGB_DICT['yellow']), 'pedestrian': switch_tuple(RGB_DICT['orange']),
+    'tram': switch_tuple(RGB_DICT['purple']), 'van': switch_tuple(RGB_DICT['teal']),
+    'misc': switch_tuple(RGB_DICT['navy'])
 }
 
 
@@ -89,16 +92,20 @@ def main():
     max_per_image = 100
     if cfg.dataset == 'coco':
         num_classes = 80
+        colors = COCO_COLORS
+        names = COCO_NAMES
     elif cfg.dataset == 'DETRAC':
         num_classes = 3
+        colors = DETRAC_COLORS
+        names = DETRAC_NAMES
     elif cfg.dataset == 'kins':
         num_classes = 7
+        colors = KINS_COLORS
+        names = KINS_NAMES
     else:
         print('Please specify correct dataset name.')
         raise NotImplementedError
 
-    colors = COCO_COLORS if cfg.dataset == 'coco' else DETRAC_COLORS
-    names = COCO_NAMES if cfg.dataset == 'coco' else DETRAC_NAMES
     for j in range(len(names)):
         col_ = [c * 255 for c in colors[j]]
         colors[j] = tuple(col_)
@@ -240,7 +247,7 @@ def main():
             counter = 1
             for lab in segms_and_scores:
                 if cfg.dataset == 'coco':
-                    if names[lab] not in display_cat:
+                    if names[lab] not in display_cat and cfg.dataset != 'kins':
                         continue
                 for idx in range(len(segms_and_scores[lab])):
                     res = segms_and_scores[lab][idx]
@@ -262,18 +269,18 @@ def main():
                         # cv2.rectangle(output_image, pt1=(int(bbox[0]), int(bbox[1])),
                         #               pt2=(int(bbox[2]), int(bbox[3])),
                         #               color=colors[lab], thickness=2)
-                        cv2.rectangle(output_image, pt1=(int(bbox[0]), int(bbox[1])),
-                                      pt2=(int(bbox[2]), int(bbox[3])),
-                                      color=nice_colors[names[lab]], thickness=2)
+                        # cv2.rectangle(output_image, pt1=(int(bbox[0]), int(bbox[1])),
+                        #               pt2=(int(bbox[2]), int(bbox[3])),
+                        #               color=nice_colors[names[lab]], thickness=2)
                         # cv2.putText(output_image, text, org=(int(text_location[0]), int(text_location[3])),
                         #             fontFace=cv2.FONT_HERSHEY_COMPLEX, thickness=1, fontScale=0.3,
                         #             color=nice_colors[names[lab]])
 
-                        # cv2.polylines(output_image, [polygon.astype(np.int32)], True, color=nice_colors[names[lab]],
-                        #               thickness=2)
-                        # cv2.drawContours(blend_mask, [polygon.astype(np.int32)], contourIdx=-1,
-                        #                  color=nice_colors[names[lab]],
-                        #                  thickness=-1)
+                        cv2.polylines(output_image, [polygon.astype(np.int32)], True, color=nice_colors[names[lab]],
+                                      thickness=2)
+                        cv2.drawContours(blend_mask, [polygon.astype(np.int32)], contourIdx=-1,
+                                         color=nice_colors[names[lab]],
+                                         thickness=-1)
 
                         # add to text file
                         new_line = '{0},{1},{2:.3f},{3:.3f},{4:.3f},{5:.3f},{6:.4f}\n'.format(str(frame_id + 1),
@@ -286,15 +293,15 @@ def main():
                                                                                                   bbox[1]),
                                                                                               score)
                         counter += 1
-                        # text_out.write(new_line)
+                        text_out.write(new_line)
 
-            # dst_img = cv2.addWeighted(output_image, 0.3, blend_mask, 0.7, 0)
-            # dst_img[blend_mask == 0] = output_image[blend_mask == 0]
-            # output_image = dst_img
+            dst_img = cv2.addWeighted(output_image, 0.4, blend_mask, 0.6, 0)
+            dst_img[blend_mask == 0] = output_image[blend_mask == 0]
+            output_image = dst_img
 
             cv2.imshow('Frames', output_image)
-            # video_out.write(output_image)
-            if cv2.waitKey() & 0xFF == ord('q'):
+            video_out.write(output_image)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
     print('Test frame rate:', 1. / np.mean(speed_list))

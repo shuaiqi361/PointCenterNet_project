@@ -13,12 +13,30 @@ from scipy.signal import resample
 
 from utils.image import get_border, get_affine_transform, affine_transform, color_aug
 from utils.image import draw_umich_gaussian, gaussian_radius
-from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon_using_mask, \
-    turning_angle_resample
+from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon_using_mask, turning_angle_resample
 
-KINS_NAMES = ['__background__', 'cyclist', 'pedestrian', 'car', 'tram', 'truck', 'van', 'misc']
+COCO_NAMES = ['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
+              'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
+              'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
+              'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+              'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
+              'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+              'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass',
+              'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
+              'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
+              'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv',
+              'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
+              'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
+              'scissors', 'teddy bear', 'hair drier', 'toothbrush']
 
-KINS_IDS = [1, 2, 4, 5, 6, 7, 8]  # 3: person-sitting not used
+COCO_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13,
+            14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 27, 28, 31, 32, 33, 34, 35, 36,
+            37, 38, 39, 40, 41, 42, 43, 44, 46, 47,
+            48, 49, 50, 51, 52, 53, 54, 55, 56, 57,
+            58, 59, 60, 61, 62, 63, 64, 65, 67, 70,
+            72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
+            82, 84, 85, 86, 87, 88, 89, 90]
 
 COCO_MEAN = [0.40789654, 0.44719302, 0.47026115]
 COCO_STD = [0.28863828, 0.27408164, 0.27809835]
@@ -26,7 +44,6 @@ COCO_EIGEN_VALUES = [0.2141788, 0.01817699, 0.00341571]
 COCO_EIGEN_VECTORS = [[-0.58752847, -0.69563484, 0.41340352],
                       [-0.5832747, 0.00994535, -0.81221408],
                       [-0.56089297, 0.71832671, 0.41158938]]
-default_crop_scale = np.array([896, 384])  # width and height for inputs
 
 
 def encode_mask(mask):
@@ -36,59 +53,47 @@ def encode_mask(mask):
     return rle
 
 
-class KINSSEGMCMM(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(896, 384), padding=31):
-        super(KINSSEGMCMM, self).__init__()
-        self.num_classes = 7  # person-sitting is not used
-        self.class_name = KINS_NAMES
-        self.valid_ids = KINS_IDS
-        self.cat_ids = {v: i for i, v in enumerate(self.valid_ids)}  # cat_id: 0-6, original_id is the key
-        self.reverse_labels = {i: v for i, v in enumerate(KINS_IDS)}
+class COCOSEGMCMM(data.Dataset):
+    def __init__(self, data_dir, dictionary_file, code_stat, split, split_ratio=1.0, img_size=(512, 512), padding=31):
+        super(COCOSEGMCMM, self).__init__()
+        self.num_classes = 80
+        self.class_name = COCO_NAMES
+        self.valid_ids = COCO_IDS
+        self.cat_ids = {v: i for i, v in enumerate(self.valid_ids)}
 
-        self.data_rng = np.random.RandomState(110)
+        self.data_rng = np.random.RandomState(900)
         self.eig_val = np.array(COCO_EIGEN_VALUES, dtype=np.float32)
         self.eig_vec = np.array(COCO_EIGEN_VECTORS, dtype=np.float32)
         self.mean = np.array(COCO_MEAN, dtype=np.float32)[None, None, :]
         self.std = np.array(COCO_STD, dtype=np.float32)[None, None, :]
 
-        if split == 'train':
-            self.split = split
-        else:
-            self.split = 'test'
+        self.split = split
         self.dictionary_file = dictionary_file
-        self.data_dir = data_dir
-        self.naming = {'train': 'training', 'test': 'testing'}
-        self.img_dir = os.path.join(self.data_dir, 'data_object_image_2/{}/image_2'.format(self.naming[self.split]))
+        self.code_stat = code_stat  # this saves mean and std of the shape coefficients
 
-        self.annot_path = os.path.join(self.data_dir, 'tools', 'update_{}_2020.json'.format(self.split))
+        self.data_dir = data_dir
+        self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
+        if split == 'test':
+            self.annot_path = os.path.join(self.data_dir, 'annotations', 'image_info_test-dev2017.json')
+        else:
+            self.annot_path = os.path.join(self.data_dir, 'annotations', 'instances_%s2017.json' % split)
 
         self.max_objs = 128
         self.padding = padding  # 31 for resnet/resdcn
         self.down_ratio = 4
         self.img_size = {'h': img_size[1], 'w': img_size[0]}
-        self.fmap_size = {'h': img_size[1] // self.down_ratio, 'w': img_size[0] // self.down_ratio}  # (224, 96)
-        self.rand_scales = np.arange(0.3, 1.1, 0.1)
+        self.fmap_size = {'h': img_size[1] // self.down_ratio, 'w': img_size[0] // self.down_ratio}
+        self.rand_scales = np.arange(0.6, 1.3, 0.1)
         self.gaussian_iou = 0.7
-        self.max_occ = 4
 
         self.n_vertices = 32
         self.n_codes = 64
         self.sparse_alpha = 0.01
 
-        print('==> initializing KINS {} data.'.format(self.split))
+        print('==> initializing coco 2017 %s data.' % split)
         self.coco = coco.COCO(self.annot_path)
-
-        annIds = self.coco.getAnnIds()
-        all_anns = self.coco.loadAnns(ids=annIds)
-        for anno in all_anns:
-            # add some fields for evaluation
-            anno['iscrowd'] = 0
-            anno['segmentation'] = anno['a_segm']  # only evaluate amodal segmentation
-            anno['bbox'] = anno['a_bbox']  # only evaluate inmodal detection
-            anno['area'] = anno['a_area']
-
         self.images = self.coco.getImgIds()
-        self.dictionary = np.load(self.dictionary_file)  # type->ndarray, shape (n_coeffs, n_vertices * 2)
+        self.dictionary = np.load(self.dictionary_file)  # ndarray, shape (n_coeffs, n_vertices * 2)
 
         if 0 < split_ratio < 1:
             split_size = int(np.clip(split_ratio * len(self.images), 1, len(self.images)))
@@ -96,13 +101,7 @@ class KINSSEGMCMM(data.Dataset):
 
         self.num_samples = len(self.images)
 
-        print('Loaded %d %s samples' % (self.num_samples, self.split))
-
-    def polys_to_mask(self, polygons, height, width):
-        rles = cocomask.frPyObjects(polygons, height, width)
-        rle = cocomask.merge(rles)
-        mask = cocomask.decode(rle)
-        return mask
+        print('Loaded %d %s samples' % (self.num_samples, split))
 
     def __getitem__(self, index):
         img_id = self.images[index]
@@ -118,18 +117,13 @@ class KINSSEGMCMM(data.Dataset):
         shapes = []
 
         for anno in annotations:
-            # add some fields for evaluation
-            # anno['iscrowd'] = 0
-            # anno['segmentation'] = anno['a_segm']  # only evaluate amodal segmentation
-            # anno['bbox'] = anno['i_bbox']  # only evaluate inmodal detection
-
-            if anno['category_id'] not in KINS_IDS:
-                continue  # excludes 3: person-sitting class for evaluation
+            if anno['iscrowd'] == 1:  # Excludes crowd objects
+                continue
 
             polygons = get_connected_polygon_using_mask(anno['segmentation'], (h_img, w_img),
                                                         n_vertices=self.n_vertices, closing_max_kernel=50)
 
-            gt_x1, gt_y1, gt_w, gt_h = anno['a_bbox']  # this is used to clip resampled polygons
+            gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
 
             # Downsample the contour to fix number of vertices
@@ -145,9 +139,12 @@ class KINSSEGMCMM(data.Dataset):
             if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
                 continue
 
+            updated_bbox = [np.min(fixed_contour[:, 0]), np.min(fixed_contour[:, 1]),
+                            np.max(fixed_contour[:, 0]), np.max(fixed_contour[:, 1])]
+
             shapes.append(np.ndarray.flatten(fixed_contour).tolist())
             labels.append(self.cat_ids[anno['category_id']])
-            bboxes.append(anno['bbox'])
+            bboxes.append(updated_bbox)
 
         labels = np.array(labels)
         bboxes = np.array(bboxes, dtype=np.float32)
@@ -157,7 +154,7 @@ class KINSSEGMCMM(data.Dataset):
             bboxes = np.array([[0., 0., 0., 0.]], dtype=np.float32)
             labels = np.array([[0]])
             shapes = np.zeros((1, self.n_vertices * 2), dtype=np.float32)
-        bboxes[:, 2:] += bboxes[:, :2]  # xywh to xyxy
+        # bboxes[:, 2:] += bboxes[:, :2]  # xywh to xyxy
 
         img = cv2.imread(img_path)
         height, width = img.shape[0], img.shape[1]
@@ -167,8 +164,8 @@ class KINSSEGMCMM(data.Dataset):
         flipped = False
         if self.split == 'train':
             scale = scale * np.random.choice(self.rand_scales)
-            w_border = get_border(400, width)
-            h_border = get_border(180, height)
+            w_border = get_border(160, width)
+            h_border = get_border(160, height)
             center[0] = np.random.randint(low=w_border, high=width - w_border)
             center[1] = np.random.randint(low=h_border, high=height - h_border)
 
@@ -178,10 +175,23 @@ class KINSSEGMCMM(data.Dataset):
                 center[0] = width - center[0] - 1
 
         trans_img = get_affine_transform(center, scale, 0, [self.img_size['w'], self.img_size['h']])
+        img = cv2.warpAffine(img, trans_img, (self.img_size['w'], self.img_size['h']))
+
         # -----------------------------------debug---------------------------------
         # image_show = img.copy()
-
-        img = cv2.warpAffine(img, trans_img, (self.img_size['w'], self.img_size['h']))
+        # for bbox, label in zip(bboxes, labels):
+        #   if flipped:
+        #     bbox[[0, 2]] = width - bbox[[2, 0]] - 1
+        #   bbox[:2] = affine_transform(bbox[:2], trans_img)
+        #   bbox[2:] = affine_transform(bbox[2:], trans_img)
+        #   bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
+        #   bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
+        #   cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
+        #   cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
+        #               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        # cv2.imshow('img', image_show)
+        # cv2.waitKey()
+        # -----------------------------------debug---------------------------------
 
         img = img.astype(np.float32) / 255.
 
@@ -193,18 +203,13 @@ class KINSSEGMCMM(data.Dataset):
         img = img.transpose(2, 0, 1)  # from [H, W, C] to [C, H, W]
 
         trans_fmap = get_affine_transform(center, scale, 0, [self.fmap_size['w'], self.fmap_size['h']])
-        # -----------------------------------debug---------------------------------
-        # image_show = cv2.warpAffine(image_show, trans_fmap, (self.fmap_size['w'], self.fmap_size['h']))
 
-        hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']),
-                        dtype=np.float32)  # heatmap of centers
-        occ_map = np.zeros((1, self.fmap_size['h'], self.fmap_size['w']),
-                           dtype=np.float32)  # grayscale map for occlusion levels
-        w_h_ = np.zeros((self.max_objs, 2), dtype=np.float32)  # width and height of inmodal bboxes
+        hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
+        w_h_ = np.zeros((self.max_objs, 2), dtype=np.float32)  # width and height of bboxes
         shapes_ = np.zeros((self.max_objs, self.n_vertices * 2), dtype=np.float32)  # gt amodal segmentation polygons
-        center_offsets = np.zeros((self.max_objs, 2), dtype=np.float32)  # gt amodal mass centers to inmodal bbox center
-        codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)  # gt amodal coefficients
-        regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for quantization error
+        center_offsets = np.zeros((self.max_objs, 2), dtype=np.float32)  # gt mass centers to bbox center
+        codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)
+        regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for offsets of shape center
         inds = np.zeros((self.max_objs,), dtype=np.int64)
         ind_masks = np.zeros((self.max_objs,), dtype=np.uint8)
 
@@ -253,10 +258,10 @@ class KINSSEGMCMM(data.Dataset):
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
                 shapes_[k] = centered_shape.reshape((1, -1))
-                # shapes_[k] = indexed_shape.reshape((1, -1))  # only for debugging
                 center_offsets[k] = mass_center - obj_c
-                codes_[k], _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
+                real_codes, _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
                                          lmbda=self.sparse_alpha, max_iter=60)
+                codes_[k] = (real_codes - self.code_stat[0:1, :]) / self.code_stat[1:2, :]  # codes are normalized
                 w_h_[k] = 1. * w, 1. * h
                 # w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
                 #           mass_center[0] - bbox[0], bbox[2] - mass_center[0]  # [top, bottom, left, right] distance
@@ -264,29 +269,7 @@ class KINSSEGMCMM(data.Dataset):
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
                 ind_masks[k] = 1
 
-                # occlusion level map gt
-                occ_map[0] += self.polys_to_mask([np.ndarray.flatten(indexed_shape).tolist()], self.fmap_size['h'],
-                                                 self.fmap_size['w']) * 1.
-
-        occ_map = np.clip(occ_map, 0, self.max_occ) / self.max_occ
-
-        # -----------------------------------debug---------------------------------
-        # for bbox, label, shape in zip(bboxes, labels, shapes_):
-        #     # cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 1)
-        #     cv2.putText(image_show, str(self.reverse_labels[label]), (int(bbox[0]), int(bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        #     # print(shape, shape.shape)
-        #     cv2.polylines(image_show, [shape.reshape(self.n_vertices, 2).astype(np.int32)], True, (0, 0, 255),
-        #                   thickness=1)
-        # # cv2.imshow('img', image_show)
-        # # cv2.imshow('occ', occ_map.astype(np.uint8).reshape(occ_map.shape[1], occ_map.shape[2]) * 255)
-        # m_img = cv2.cvtColor((occ_map * 255).astype(np.uint8).reshape(occ_map.shape[1], occ_map.shape[2]),
-        #                      code=cv2.COLOR_GRAY2BGR)
-        # cat_img = np.concatenate([m_img, image_show], axis=0)
-        # cv2.imshow('segm', cat_img)
-        # cv2.waitKey()
-        # -----------------------------------debug---------------------------------
-
-        return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets, 'occ_map': occ_map,
+        return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
                 'c': center, 's': scale, 'img_id': img_id}
 
@@ -294,9 +277,9 @@ class KINSSEGMCMM(data.Dataset):
         return self.num_samples
 
 
-class KINS_eval_segm_cmm(KINSSEGMCMM):
+class COCO_eval_segm_cmm(COCOSEGMCMM):
     def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=31):
-        super(KINS_eval_segm_cmm, self).__init__(data_dir, dictionary_file, split, padding)
+        super(COCO_eval_segm_cmm, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales
         self.fix_size = fix_size
@@ -344,6 +327,7 @@ class KINS_eval_segm_cmm(KINSSEGMCMM):
         return img_id, out
 
     def convert_eval_format(self, all_segments):
+        # all_bboxes: num_samples x num_classes x 5
         segments = []
         for image_id in all_segments:
             img = self.coco.loadImgs(image_id)[0]
@@ -378,7 +362,7 @@ class KINS_eval_segm_cmm(KINSSEGMCMM):
         segments = self.convert_eval_format(results)
 
         if save_dir is not None:
-            result_json = os.path.join(save_dir, "asegm_cmm_results.json")
+            result_json = os.path.join(save_dir, "segm_iterative_cmm_results.json")
             json.dump(segments, open(result_json, "w"))
 
         coco_segms = self.coco.loadRes(segments)
@@ -401,28 +385,3 @@ class KINS_eval_segm_cmm(KINSSEGMCMM):
             out.append((img_id, {s: {k: torch.from_numpy(sample[s][k]).float()
             if k == 'image' else np.array(sample[s][k]) for k in sample[s]} for s in sample}))
         return out
-
-
-if __name__ == '__main__':
-    from tqdm import tqdm
-    import pickle
-
-    dataset = COCOSEGMCMM('/media/keyi/Data/Research/traffic/data/KINS',
-                            '/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/dictionary/train_dict_kins_v32_n64_a0.10.npy',
-                            'train')
-
-    # dataset = COCO_eval_segm_cmm('/media/keyi/Data/Research/traffic/data/KINS',
-    #                              '/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/dictionary/train_dict_kins_v32_n64_a0.10.npy',
-    #                              'test', padding=31)
-
-    # for d in dataset:
-    #   b1 = d
-    #   pass
-
-    # pass
-    train_loader = torch.utils.data.DataLoader(dataset, batch_size=1,
-                                               shuffle=False, num_workers=0,
-                                               pin_memory=False, drop_last=True)
-
-    for b in tqdm(train_loader):
-        pass
