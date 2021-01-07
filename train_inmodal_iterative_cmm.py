@@ -309,7 +309,7 @@ def main():
         if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
             stat = val_map(epoch)
             if stat > best_mAP:
-                print('Overall mAP is improving ...')
+                print('Overall mAP {:.3f} is improving ...'.format(stat))
                 print_log(saver.save(model.module.state_dict(), 'checkpoint'))
                 best_mAP = stat
 
