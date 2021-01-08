@@ -45,7 +45,8 @@ COCO_EIGEN_VECTORS = [[-0.58752847, -0.69563484, 0.41340352],
                       [-0.5832747, 0.00994535, -0.81221408],
                       [-0.56089297, 0.71832671, 0.41158938]]
 
-COCO_CODE_RANGE = [-615.35, 705.9]
+# COCO_CODE_RANGE = [-615.35, 705.9]
+COCO_CODE_RANGE = [-200, 200.]
 
 def encode_mask(mask):
     """Convert mask to coco rle"""
@@ -55,7 +56,7 @@ def encode_mask(mask):
 
 
 class COCOSEGMCMM(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, code_stat, split, split_ratio=1.0, img_size=(512, 512), padding=31):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=31):
         super(COCOSEGMCMM, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
@@ -71,7 +72,7 @@ class COCOSEGMCMM(data.Dataset):
 
         self.split = split
         self.dictionary_file = dictionary_file
-        self.code_stat = code_stat  # this saves mean and std of the shape coefficients
+        # self.code_stat = code_stat  # this saves mean and std of the shape coefficients
 
         self.data_dir = data_dir
         self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
