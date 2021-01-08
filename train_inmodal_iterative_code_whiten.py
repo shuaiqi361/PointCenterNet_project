@@ -56,6 +56,7 @@ parser.add_argument('--code_loss_weight', type=float, default=1)
 
 parser.add_argument('--lr', type=float, default=5e-4)
 parser.add_argument('--lr_step', type=str, default='90,120')
+parser.add_argument('--gamma', type=float, default=0.1)
 parser.add_argument('--batch_size', type=int, default=48)
 parser.add_argument('--num_epochs', type=int, default=140)
 
@@ -153,7 +154,7 @@ def main():
         torch.cuda.empty_cache()
 
     optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.2)
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=cfg.gamma)
 
     def train(epoch):
         print_log('\n Epoch: %d' % epoch)
@@ -258,10 +259,15 @@ def main():
                     # hmap, regs, w_h_, _, _, codes = model(inputs[scale]['image'])[-1]
                     output = [hmap, regs, w_h_, codes, offsets]
 
+                    # segms = ctsegm_amodal_cmm_whiten_decode(*output,
+                    #                                  torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
+                    #                                  torch.from_numpy(code_stat.astype(np.float32)).to(cfg.device),
+                    #                                  K=cfg.test_topk)
                     segms = ctsegm_amodal_cmm_whiten_decode(*output,
-                                                     torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
-                                                     torch.from_numpy(code_stat.astype(np.float32)).to(cfg.device),
-                                                     K=cfg.test_topk)
+                                                            torch.from_numpy(dictionary.astype(np.float32)).to(
+                                                                cfg.device),
+                                                            train_dataset.code_range,
+                                                            K=cfg.test_topk)
                     # segms = ctsegm_shift_code_decode(*output,
                     #                                  torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
                     #                                  K=cfg.test_topk)

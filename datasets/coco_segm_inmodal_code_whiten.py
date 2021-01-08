@@ -45,6 +45,7 @@ COCO_EIGEN_VECTORS = [[-0.58752847, -0.69563484, 0.41340352],
                       [-0.5832747, 0.00994535, -0.81221408],
                       [-0.56089297, 0.71832671, 0.41158938]]
 
+COCO_CODE_RANGE = [-615.35, 705.9]
 
 def encode_mask(mask):
     """Convert mask to coco rle"""
@@ -60,6 +61,7 @@ class COCOSEGMCMM(data.Dataset):
         self.class_name = COCO_NAMES
         self.valid_ids = COCO_IDS
         self.cat_ids = {v: i for i, v in enumerate(self.valid_ids)}
+        self.code_range = COCO_CODE_RANGE
 
         self.data_rng = np.random.RandomState(900)
         self.eig_val = np.array(COCO_EIGEN_VALUES, dtype=np.float32)
@@ -261,7 +263,9 @@ class COCOSEGMCMM(data.Dataset):
                 center_offsets[k] = mass_center - obj_c
                 real_codes, _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
                                          lmbda=self.sparse_alpha, max_iter=60)
-                codes_[k] = (real_codes - self.code_stat[0:1, :]) / self.code_stat[1:2, :]  # codes are normalized
+                # codes_[k] = (real_codes - self.code_stat[0:1, :]) / self.code_stat[1:2, :]  # codes are normalized
+                codes_[k] = (real_codes - self.code_range[0]) / (self.code_range[1] - self.code_range[0]) * 2. - 1  # squeeze into range [-1, 1]
+
                 w_h_[k] = 1. * w, 1. * h
                 # w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
                 #           mass_center[0] - bbox[0], bbox[2] - mass_center[0]  # [top, bottom, left, right] distance

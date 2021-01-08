@@ -366,7 +366,8 @@ def ctsegm_amodal_cmm_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, K=1
     return segmentations
 
 
-def ctsegm_amodal_cmm_whiten_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, code_stat, K=100):
+# def ctsegm_amodal_cmm_whiten_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, code_stat, K=100):
+def ctsegm_amodal_cmm_whiten_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, code_range, K=100):
     batch, cat, height, width = hmap.shape
     hmap = torch.sigmoid(hmap)
 
@@ -402,7 +403,8 @@ def ctsegm_amodal_cmm_whiten_decode(hmap, regs, w_h_, codes_, offsets_, dictiona
                         ys + w_h_[..., 1:2] / 2], dim=2)
 
     offsets_ = _tranpose_and_gather_feature(offsets_, inds)
-    codes_ = codes_ * code_stat[1].view(1, 1, -1) + code_stat[0].view(1, 1, -1)  # recover the original unnormalized codes
+    # codes_ = codes_ * code_stat[1].view(1, 1, -1) + code_stat[0].view(1, 1, -1)  # recover the original unnormalized codes
+    codes_ = (codes_ + 1) / 2. * (code_range[1] - code_range[0]) + code_range[0]
 
     segms = torch.matmul(codes_, dictionary)
     segms = segms.view(batch, K, 32, 2) + offsets_.view(batch, K, 1, 2) + \
