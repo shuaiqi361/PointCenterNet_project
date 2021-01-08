@@ -53,6 +53,8 @@ parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
 parser.add_argument('--cmm_loss_weight', type=float, default=1)
 parser.add_argument('--code_loss_weight', type=float, default=1)
+parser.add_argument('--active_weight', type=float, default=1)
+parser.add_argument('--bce_loss_weight', type=float, default=1)
 
 parser.add_argument('--lr', type=float, default=5e-4)
 parser.add_argument('--lr_step', type=str, default='90,120')
@@ -192,9 +194,9 @@ def main():
             # codes_loss = (_reg_loss(c_1, batch['codes'], batch['ind_masks'])
             #               + _reg_loss(c_2, batch['codes'], batch['ind_masks'])
             #               + _reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
-            codes_loss = (active_reg_loss(c_1, batch['codes'], batch['ind_masks'], active_)
-                          + active_reg_loss(c_2, batch['codes'], batch['ind_masks'], active_)
-                          + active_reg_loss(c_3, batch['codes'], batch['ind_masks'], active_)) / 3.
+            codes_loss = (active_reg_loss(c_1, batch['codes'], batch['ind_masks'], active_, cfg.active_weight)
+                          + active_reg_loss(c_2, batch['codes'], batch['ind_masks'], active_, cfg.active_weight)
+                          + active_reg_loss(c_3, batch['codes'], batch['ind_masks'], active_, cfg.active_weight)) / 3.
 
             # cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
             #             + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
@@ -205,7 +207,7 @@ def main():
 
             # loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
             #        + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
-            loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss + active_loss
+            loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss + cfg.code_loss_weight * active_loss
 
             optimizer.zero_grad()
             loss.backward()
