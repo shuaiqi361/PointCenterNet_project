@@ -44,7 +44,8 @@ def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0., 
     scale_gt_shapes[:, :, 2], _ = torch.max(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 0], dim=-1)
     scale_gt_shapes[:, :, 3], _ = torch.max(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 1], dim=-1)
     scale_norm = torch.sqrt((scale_gt_shapes[:, :, 2] - scale_gt_shapes[:, :, 0]) ** 2 +
-                            (scale_gt_shapes[:, :, 3] - scale_gt_shapes[:, :, 1]) ** 2).view(batch_size, max_obj, 1) + 1e-5
+                            (scale_gt_shapes[:, :, 3] - scale_gt_shapes[:, :, 1]) ** 2).view(batch_size, max_obj,
+                                                                                             1) + 1e-5
     if roll:
         cmm_gt_shapes = torch.zeros(size=gt_shapes.size(), device=gt_shapes.device)
         for bs in range(batch_size):
@@ -64,10 +65,12 @@ def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0., 
                     cmm_gt_shapes[bs, i, :] = torch.roll(gt_shapes[bs, i, :], shifts=roll_index)
 
         loss_cmm = sum(torch.sum(
-            F.l1_loss(r * mask, cmm_gt_shapes * mask, reduction='none') * 10 / scale_norm) / (mask.sum() + 1e-4) for r in pred_shapes)
+            F.l1_loss(r * mask, cmm_gt_shapes * mask, reduction='none') * 10 / scale_norm) / (mask.sum() + 1e-4) for r
+                       in pred_shapes)
     else:
         loss_cmm = sum(torch.sum(
-            F.l1_loss(r * mask, gt_shapes * mask, reduction='none') * 10 / scale_norm) / (mask.sum() + 1e-4) for r in pred_shapes)
+            F.l1_loss(r * mask, gt_shapes * mask, reduction='none') * 10 / scale_norm) / (mask.sum() + 1e-4) for r in
+                       pred_shapes)
 
     loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
 
@@ -151,13 +154,40 @@ def _reg_loss(regs, gt_regs, mask):
     return loss / len(regs)
 
 
+def _bce_loss(regs, gt_regs, mask):
+    mask = mask[:, :, None].expand_as(gt_regs).float()
+    loss = sum(
+        F.binary_cross_entropy_with_logits(r * mask, gt_regs * mask, reduction='sum') / (mask.sum() + 1e-4) for r in
+        regs)
+    return loss / len(regs)
+
+
 def norm_reg_loss(regs, gt_regs, mask):
     _, _, len_vec = gt_regs.shape
     mask = mask[:, :, None].expand_as(gt_regs).float()
     norm_gt_codes = torch.norm(gt_regs, dim=2, keepdim=True) + 1e-4
     loss = sum(torch.sum(F.l1_loss(r * mask, gt_regs * mask, reduction='none') * len_vec / norm_gt_codes) / (
-                mask.sum() + 1e-4) for r in regs)
+            mask.sum() + 1e-4) for r in regs)
     return loss / len(regs)
+
+
+def active_reg_loss(regs, gt_regs, mask, active_codes, weights=1.0):
+    _, _, len_vec = gt_regs.shape
+    mask = mask[:, :, None].expand_as(gt_regs).float()
+
+    active = (torch.sigmoid(active_codes) > 0.5) * 1
+    inactive = torch.abs(active - 1)
+    act_norm_gt_codes = torch.norm(gt_regs * active, dim=2, keepdim=True) + 1e-4
+    inact_norm_gt_codes = torch.norm(gt_regs * inactive, dim=2, keepdim=True) + 1e-4
+
+    loss_active = sum(torch.sum(
+        F.l1_loss(r * mask * active, gt_regs * mask * active, reduction='none') * len_vec / act_norm_gt_codes) / (
+                              mask.sum() + 1e-4) for r in regs)
+    loss_inactive = sum(
+        torch.sum(F.l1_loss(r * mask * inactive, gt_regs * mask * inactive, reduction='none') * len_vec / inact_norm_gt_codes) / (
+                mask.sum() + 1e-4) for r in regs)
+
+    return (loss_active + weights * loss_inactive) / len(regs)
 
 
 def smooth_reg_loss(regs, gt_regs, mask):
