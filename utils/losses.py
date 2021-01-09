@@ -171,21 +171,37 @@ def norm_reg_loss(regs, gt_regs, mask):
     return loss / len(regs)
 
 
+# def active_reg_loss(regs, gt_regs, mask, active_codes, weights=1.0):
+#     _, _, len_vec = gt_regs.shape
+#     mask = mask[:, :, None].expand_as(gt_regs).float()
+#     active = [(torch.sigmoid(c) > 0.5) * 1 for c in active_codes]
+#     inactive = [torch.abs(c - 1) for c in active]
+#
+#     act_norm_gt_codes = [torch.norm(gt_regs * c, dim=2, keepdim=True) + 1e-4 for c in active]
+#     inact_norm_gt_codes = [torch.norm(gt_regs * c, dim=2, keepdim=True) + 1e-4 for c in inactive]
+#
+#     loss_active = sum(torch.sum(
+#         F.l1_loss(r * mask * c, gt_regs * mask * c, reduction='none') * len_vec / n) / (
+#                               mask.sum() + 1e-4) for r in regs for c in active for n in act_norm_gt_codes)
+#     loss_inactive = sum(
+#         torch.sum(F.l1_loss(r * mask * c, gt_regs * mask * c, reduction='none') * len_vec / n) / (
+#                 mask.sum() + 1e-4) for r in regs for c in inactive for n in inact_norm_gt_codes)
+#
+#     return (loss_active + weights * loss_inactive) / len(regs)
+
 def active_reg_loss(regs, gt_regs, mask, active_codes, weights=1.0):
     _, _, len_vec = gt_regs.shape
     mask = mask[:, :, None].expand_as(gt_regs).float()
-    active = [(torch.sigmoid(c) > 0.5) * 1 for c in active_codes]
-    inactive = [torch.abs(c - 1) for c in active]
+    inactive_codes = torch.abs(active_codes - 1)
 
-    act_norm_gt_codes = [torch.norm(gt_regs * c, dim=2, keepdim=True) + 1e-4 for c in active]
-    inact_norm_gt_codes = [torch.norm(gt_regs * c, dim=2, keepdim=True) + 1e-4 for c in inactive]
+    norm_gt_codes = torch.norm(gt_regs, dim=2, keepdim=True) + 1e-4
 
     loss_active = sum(torch.sum(
-        F.l1_loss(r * mask * c, gt_regs * mask * c, reduction='none') * len_vec / n) / (
-                              mask.sum() + 1e-4) for r in regs for c in active for n in act_norm_gt_codes)
+        F.l1_loss(r * mask * active_codes, gt_regs * mask * active_codes,
+                  reduction='none') * len_vec / norm_gt_codes) / (mask.sum() + 1e-4) for r in regs)
     loss_inactive = sum(
-        torch.sum(F.l1_loss(r * mask * c, gt_regs * mask * c, reduction='none') * len_vec / n) / (
-                mask.sum() + 1e-4) for r in regs for c in inactive for n in inact_norm_gt_codes)
+        torch.sum(F.l1_loss(r * mask * inactive_codes, gt_regs * mask * inactive_codes,
+                            reduction='none') * len_vec / norm_gt_codes) / (mask.sum() + 1e-4) for r in regs)
 
     return (loss_active + weights * loss_inactive) / len(regs)
 
