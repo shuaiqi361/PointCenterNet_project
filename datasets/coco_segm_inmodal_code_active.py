@@ -267,7 +267,8 @@ class COCOSEGMCMM(data.Dataset):
                 # codes_[k] = (real_codes - self.code_range[0]) / (
                 #             self.code_range[1] - self.code_range[0]) * 2. - 1  # squeeze into range [-1, 1]
                 codes_[k] = real_codes
-                activated_codes[k] = (np.abs(real_codes) > self.active_threshold) * 1
+                thres = np.sort(np.abs(real_codes[0, :]))[47]
+                activated_codes[k] = (np.abs(real_codes) >= thres) * 1
 
                 w_h_[k] = 1. * w, 1. * h
                 # w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \

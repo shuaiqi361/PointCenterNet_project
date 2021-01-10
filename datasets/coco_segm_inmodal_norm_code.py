@@ -209,7 +209,7 @@ class COCOSEGMCMM(data.Dataset):
         shapes_ = np.zeros((self.max_objs, self.n_vertices * 2), dtype=np.float32)  # gt amodal segmentation polygons
         center_offsets = np.zeros((self.max_objs, 2), dtype=np.float32)  # gt mass centers to bbox center
         codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)
-        contour_std = np.zeros((self.max_objs, 1), dtype=np.int64)  # keep track of codes that is activated
+        contour_std_ = np.zeros((self.max_objs, 1), dtype=np.float32)  # keep track of codes that is activated
         regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for offsets of shape center
         inds = np.zeros((self.max_objs,), dtype=np.int64)
         ind_masks = np.zeros((self.max_objs,), dtype=np.uint8)
@@ -246,7 +246,7 @@ class COCOSEGMCMM(data.Dataset):
             indexed_shape = np.concatenate((fixed_contour[idx:, :], fixed_contour[:idx, :]), axis=0)
 
             mass_center = np.mean(indexed_shape, axis=0)
-            contour_std = np.std(contour, axis=0) + 1e-4
+            contour_std = np.std(indexed_shape, axis=0) + 1e-4
             if h < 1e-6 or w < 1e-6:  # remove small bboxes
                 continue
 
@@ -264,7 +264,7 @@ class COCOSEGMCMM(data.Dataset):
                 center_offsets[k] = mass_center - obj_c
                 codes_[k], _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
                                           lmbda=self.sparse_alpha, max_iter=60)
-                contour_std[k] = np.sqrt(np.sum(contour_std ** 2))
+                contour_std_[k] = np.sqrt(np.sum(contour_std ** 2))
 
                 w_h_[k] = 1. * w, 1. * h
                 # w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
@@ -273,7 +273,7 @@ class COCOSEGMCMM(data.Dataset):
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
                 ind_masks[k] = 1
 
-        return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets, 'std': contour_std,
+        return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets, 'std': contour_std_,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
                 'c': center, 's': scale, 'img_id': img_id}
 
