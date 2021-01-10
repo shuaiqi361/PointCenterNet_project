@@ -89,7 +89,7 @@ class COCOSEGMCMM(data.Dataset):
         self.n_vertices = 32
         self.n_codes = 64
         self.sparse_alpha = 0.01
-        self.active_threshold = 5.0
+        self.active_threshold = 10.0
 
         print('==> initializing coco 2017 %s data.' % split)
         self.coco = coco.COCO(self.annot_path)
