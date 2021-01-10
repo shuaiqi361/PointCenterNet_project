@@ -177,13 +177,14 @@ def main():
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
-            active_codes = [_tranpose_and_gather_feature(r, batch['inds']) for r in active_codes]
-            inactive_codes = [_tranpose_and_gather_feature(r, batch['inds']) for r in inactive_codes]
+
             active_cls = [_tranpose_and_gather_feature(r, batch['inds']) for r in active_cls]
             offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
             active_mask = batch['active']
             inactive_mask = torch.abs(batch['active'] - 1)
+            active_codes = [_tranpose_and_gather_feature(r, batch['inds']) * active_mask for r in active_codes]
+            inactive_codes = [_tranpose_and_gather_feature(r, batch['inds']) * inactive_mask for r in inactive_codes]
 
             active_cls_loss = _bce_loss(active_cls, batch['active'], batch['ind_masks'])
             hmap_loss = _neg_loss(hmap, batch['hmap'])
@@ -192,8 +193,8 @@ def main():
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
 
-            codes_loss = norm_reg_loss(active_codes * active_mask, batch['codes'] * active_mask, batch['ind_masks']) \
-                         + norm_reg_loss(inactive_codes * inactive_mask, batch['codes'] * inactive_mask, batch['ind_masks'])
+            codes_loss = norm_reg_loss(active_codes, batch['codes'] * active_mask, batch['ind_masks']) \
+                         + norm_reg_loss(inactive_codes, batch['codes'] * inactive_mask, batch['ind_masks'])
 
             # cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
             #             + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
@@ -249,7 +250,7 @@ def main():
                     hmap, regs, w_h_, offsets, active_codes, inactive_codes, active_cls = model(inputs[scale]['image'])[-1]
                     active_cls = torch.sigmoid(active_cls) > 0.5
                     active_mask = active_cls * 1
-                    inactive_mask = (not active_cls) * 1
+                    inactive_mask = (~ active_cls) * 1
                     codes = active_codes * active_mask + inactive_codes * inactive_mask
                     output = [hmap, regs, w_h_, codes, offsets]
 
@@ -310,7 +311,7 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 1:
             stat = val_map(epoch)
             if stat > best_mAP:
                 print('Overall mAP {:.3f} is improving ...'.format(stat))
