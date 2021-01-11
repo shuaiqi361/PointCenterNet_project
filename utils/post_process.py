@@ -104,7 +104,7 @@ def ctsegm_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
     return segmentations
 
 
-def ctsegm_scale_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
+def ctsegm_scale_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, K=100):
     batch, cat, height, width = hmap.shape
     hmap = torch.sigmoid(hmap)
 
@@ -114,11 +114,10 @@ def ctsegm_scale_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
         w_h_ = (w_h_[0:1] + flip_tensor(w_h_[1:2])) / 2
         regs = regs[0:1]
         codes_ = codes_[0:1]
+        offsets_ = offsets_[0:1]
 
     batch = 1
-
     hmap = _nms(hmap)  # perform nms on heatmaps
-
     scores, inds, clses, ys, xs = _topk(hmap, K=K)
 
     regs = _tranpose_and_gather_feature(regs, inds)
@@ -131,7 +130,6 @@ def ctsegm_scale_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
 
     codes_ = _tranpose_and_gather_feature(codes_, inds)
     codes_ = codes_.view(batch, K, 64)
-    # codes_ = torch.log(codes_).view(batch, K, 64)
 
     clses = clses.view(batch, K, 1).float()
     scores = scores.view(batch, K, 1)
@@ -141,10 +139,10 @@ def ctsegm_scale_decode(hmap, regs, w_h_, codes_, dictionary, K=100):
                         xs + w_h_[..., 0:1] / 2,
                         ys + w_h_[..., 1:2] / 2], dim=2)
 
+    offsets_ = _tranpose_and_gather_feature(offsets_, inds)
     segms = torch.matmul(codes_, dictionary)
-    # print('Sizes:', segms.size(), std_.size(), xs.size())
-    segms = segms.view(batch, K, 32, 2) * w_h_.view(batch, K, 1, 2) / 2. \
-            + torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)
+    segms = segms.view(batch, K, 32, 2) * w_h_.view(batch, K, 1, 2) / 2. + offsets_.view(batch, K, 1, 2) + \
+            torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)
     segmentations = torch.cat([segms.view(batch, K, -1), bboxes, scores, clses], dim=2)
 
     return segmentations

@@ -13,7 +13,8 @@ from scipy.signal import resample
 
 from utils.image import get_border, get_affine_transform, affine_transform, color_aug
 from utils.image import draw_umich_gaussian, gaussian_radius
-from utils.sparse_coding import fast_ista, check_clockwise_polygon
+from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon_using_mask, \
+    turning_angle_resample
 
 COCO_NAMES = ['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
               'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
@@ -53,24 +54,23 @@ def encode_mask(mask):
     return rle
 
 
-class COCOSEGMSCALE(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=512):
-        super(COCOSEGMSCALE, self).__init__()
+class COCOSEGMCMM(data.Dataset):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=31):
+        super(COCOSEGMCMM, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
         self.valid_ids = COCO_IDS
         self.cat_ids = {v: i for i, v in enumerate(self.valid_ids)}
 
-        self.data_rng = np.random.RandomState(95)
+        self.data_rng = np.random.RandomState(900)
         self.eig_val = np.array(COCO_EIGEN_VALUES, dtype=np.float32)
         self.eig_vec = np.array(COCO_EIGEN_VECTORS, dtype=np.float32)
         self.mean = np.array(COCO_MEAN, dtype=np.float32)[None, None, :]
         self.std = np.array(COCO_STD, dtype=np.float32)[None, None, :]
 
         self.split = split
-        # self.annotation_file = annotation_file
-        # self.shape_file = shape_file
         self.dictionary_file = dictionary_file
+
         self.data_dir = data_dir
         self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
         if split == 'test':
@@ -79,11 +79,11 @@ class COCOSEGMSCALE(data.Dataset):
             self.annot_path = os.path.join(self.data_dir, 'annotations', 'instances_%s2017.json' % split)
 
         self.max_objs = 128
-        self.padding = 127  # 31 for resnet/resdcn
+        self.padding = padding  # 31 for resnet/resdcn
         self.down_ratio = 4
-        self.img_size = {'h': img_size, 'w': img_size}
-        self.fmap_size = {'h': img_size // self.down_ratio, 'w': img_size // self.down_ratio}
-        self.rand_scales = np.arange(0.6, 1.4, 0.1)
+        self.img_size = {'h': img_size[1], 'w': img_size[0]}
+        self.fmap_size = {'h': img_size[1] // self.down_ratio, 'w': img_size[0] // self.down_ratio}
+        self.rand_scales = np.arange(0.6, 1.3, 0.1)
         self.gaussian_iou = 0.7
 
         self.n_vertices = 32
@@ -120,48 +120,31 @@ class COCOSEGMSCALE(data.Dataset):
             if anno['iscrowd'] == 1:  # Excludes crowd objects
                 continue
 
-            polygons = anno['segmentation']
-            if len(polygons) > 1:
-                bg = np.zeros((h_img, w_img, 1), dtype=np.uint8)
-                for poly in polygons:
-                    len_poly = len(poly)
-                    vertices = np.zeros((1, len_poly // 2, 2), dtype=np.int32)
-                    for i in range(len_poly // 2):
-                        vertices[0, i, 0] = int(poly[2 * i])
-                        vertices[0, i, 1] = int(poly[2 * i + 1])
-
-                    cv2.drawContours(bg, vertices, color=(255), contourIdx=-1, thickness=-1)
-
-                pads = 5
-                while True:
-                    kernel = np.ones((pads, pads), np.uint8)
-                    bg_closed = cv2.morphologyEx(bg, cv2.MORPH_CLOSE, kernel)
-                    obj_contours, _ = cv2.findContours(bg_closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                    if len(obj_contours) > 1:
-                        pads += 5
-                    else:
-                        polygons = obj_contours[0]
-                        break
-            else:
-                # continue
-                polygons = anno['segmentation'][0]
+            polygons = get_connected_polygon_using_mask(anno['segmentation'], (h_img, w_img),
+                                                        n_vertices=self.n_vertices, closing_max_kernel=50)
 
             gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
 
             # Downsample the contour to fix number of vertices
-            fixed_contour = resample(contour, num=self.n_vertices)
+            if len(contour) > self.n_vertices:
+                fixed_contour = resample(contour, num=self.n_vertices)
+            else:
+                fixed_contour = turning_angle_resample(contour, self.n_vertices)
 
             fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
             fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
-            # contour_mean = np.mean(fixed_contour, axis=0)
+
             contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
             if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
                 continue
 
+            updated_bbox = [np.min(fixed_contour[:, 0]), np.min(fixed_contour[:, 1]),
+                            np.max(fixed_contour[:, 0]), np.max(fixed_contour[:, 1])]
+
             shapes.append(np.ndarray.flatten(fixed_contour).tolist())
             labels.append(self.cat_ids[anno['category_id']])
-            bboxes.append(anno['bbox'])
+            bboxes.append(updated_bbox)
 
         labels = np.array(labels)
         bboxes = np.array(bboxes, dtype=np.float32)
@@ -171,7 +154,7 @@ class COCOSEGMSCALE(data.Dataset):
             bboxes = np.array([[0., 0., 0., 0.]], dtype=np.float32)
             labels = np.array([[0]])
             shapes = np.zeros((1, self.n_vertices * 2), dtype=np.float32)
-        bboxes[:, 2:] += bboxes[:, :2]  # xywh to xyxy
+        # bboxes[:, 2:] += bboxes[:, :2]  # xywh to xyxy
 
         img = cv2.imread(img_path)
         height, width = img.shape[0], img.shape[1]
@@ -181,8 +164,8 @@ class COCOSEGMSCALE(data.Dataset):
         flipped = False
         if self.split == 'train':
             scale = scale * np.random.choice(self.rand_scales)
-            w_border = get_border(128, width)
-            h_border = get_border(128, height)
+            w_border = get_border(160, width)
+            h_border = get_border(160, height)
             center[0] = np.random.randint(low=w_border, high=width - w_border)
             center[1] = np.random.randint(low=h_border, high=height - h_border)
 
@@ -222,17 +205,19 @@ class COCOSEGMSCALE(data.Dataset):
         trans_fmap = get_affine_transform(center, scale, 0, [self.fmap_size['w'], self.fmap_size['h']])
 
         hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
-        w_h_ = np.zeros((self.max_objs, 2), dtype=np.float32)  # width and height of the shape
-        codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)  # gt coefficients/codes for shapes
+        w_h_ = np.zeros((self.max_objs, 2), dtype=np.float32)  # width and height of bboxes
+        shapes_ = np.zeros((self.max_objs, self.n_vertices * 2), dtype=np.float32)  # gt amodal segmentation polygons
+        center_offsets = np.zeros((self.max_objs, 2), dtype=np.float32)  # gt mass centers to bbox center
+        codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)
+
         regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for offsets of shape center
         inds = np.zeros((self.max_objs,), dtype=np.int64)
         ind_masks = np.zeros((self.max_objs,), dtype=np.uint8)
 
-        # detections = []
         for k, (bbox, label, shape) in enumerate(zip(bboxes, labels, shapes)):
             if flipped:
                 bbox[[0, 2]] = width - bbox[[2, 0]] - 1
-                # Flip the contour
+                # Flip the contour x-axis
                 for m in range(self.n_vertices):
                     shape[2 * m] = width - shape[2 * m] - 1
 
@@ -246,55 +231,46 @@ class COCOSEGMSCALE(data.Dataset):
             for m in range(self.n_vertices):  # apply scale and crop transform to shapes
                 shape[2 * m:2 * m + 2] = affine_transform(shape[2 * m:2 * m + 2], trans_fmap)
 
-            contour = np.reshape(shape, (self.n_vertices, 2))
-            # Indexing from the left-most vertex, argmin x-axis
-            idx = np.argmin(contour[:, 0])
-            indexed_shape = np.concatenate((contour[idx:, :], contour[:idx, :]), axis=0)
+            shape_clipped = np.reshape(shape, (self.n_vertices, 2))
 
-            clockwise_flag = check_clockwise_polygon(indexed_shape)
+            shape_clipped[:, 0] = np.clip(shape_clipped[:, 0], 0, self.fmap_size['w'] - 1)
+            shape_clipped[:, 1] = np.clip(shape_clipped[:, 1], 0, self.fmap_size['h'] - 1)
+
+            clockwise_flag = check_clockwise_polygon(shape_clipped)
             if not clockwise_flag:
-                fixed_contour = np.flip(indexed_shape, axis=0)
+                fixed_contour = np.flip(shape_clipped, axis=0)
             else:
-                fixed_contour = indexed_shape.copy()
+                fixed_contour = shape_clipped.copy()
+            # Indexing from the left-most vertex, argmin x-axis
+            idx = np.argmin(fixed_contour[:, 0])
+            indexed_shape = np.concatenate((fixed_contour[idx:, :], fixed_contour[:idx, :]), axis=0)
 
-            contour[:, 0] = np.clip(fixed_contour[:, 0], 0, self.fmap_size['w'] - 1)
-            contour[:, 1] = np.clip(fixed_contour[:, 1], 0, self.fmap_size['h'] - 1)
-
-            box_center = np.array([(bbox[0] + bbox[2]) / 2., (bbox[1] + bbox[3]) / 2.], dtype=np.float32)
+            mass_center = np.mean(indexed_shape, axis=0)
+            # contour_std = np.std(indexed_shape, axis=0) + 1e-4
             if h < 1e-6 or w < 1e-6:  # remove small bboxes
                 continue
 
-            norm_shape = (contour - box_center) / np.array([w / 2., h / 2.])
+            # centered_shape = indexed_shape - mass_center
+            norm_shape = (indexed_shape - mass_center) / np.array([w / 2., h / 2.])
 
             if h > 0 and w > 0:
-                obj_c = box_center
+                obj_c = np.array([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2], dtype=np.float32)
+                # obj_c = mass_center
                 obj_c_int = obj_c.astype(np.int32)
 
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
-                temp_codes, _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
-                                         lmbda=self.sparse_alpha, max_iter=80)
-                codes_[k] = np.exp(temp_codes)  # apply exponential to regularize the predicted codes
+                shapes_[k] = norm_shape.reshape((1, -1))
+                center_offsets[k] = mass_center - obj_c
+                codes_[k], _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
+                                          lmbda=self.sparse_alpha, max_iter=60)
+
                 w_h_[k] = 1. * w, 1. * h
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
                 ind_masks[k] = 1
 
-        # detections = np.array(detections, dtype=np.float32) \
-        #   if len(detections) > 0 else np.zeros((1, 6), dtype=np.float32)
-
-        # -----------------------------------debug---------------------------------
-        # canvas = np.zeros((self.fmap_size['h'] * 2, self.fmap_size['w'] * 2, 3), dtype=np.float32)
-        # canvas[0:self.fmap_size['h'], 0:self.fmap_size['w'], :] = np.tile(np.expand_dims(hmap[0], 2), (1, 1, 3))
-        # canvas[0:self.fmap_size['h'], self.fmap_size['w']:, :] = np.tile(np.expand_dims(hmap[1], 2), (1, 1, 3))
-        # canvas[self.fmap_size['h']:, 0:self.fmap_size['w'], :] = np.tile(np.expand_dims(hmap[2], 2), (1, 1, 3))
-        # canvas[self.fmap_size['h']:, self.fmap_size['w']:, :] = np.tile(np.expand_dims(hmap[3], 2), (1, 1, 3))
-        # print(w_h_[0], regs[0])
-        # cv2.imshow('hmap', canvas)
-        # cv2.waitKey()
-        # -----------------------------------debug---------------------------------
-
-        return {'image': img, 'codes': codes_,
+        return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
                 'c': center, 's': scale, 'img_id': img_id}
 
@@ -302,9 +278,9 @@ class COCOSEGMSCALE(data.Dataset):
         return self.num_samples
 
 
-class COCO_eval_segm_scale(COCOSEGMSCALE):
-    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False):
-        super(COCO_eval_segm_scale, self).__init__(data_dir, dictionary_file, split)
+class COCO_eval_segm_cmm(COCOSEGMCMM):
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=31):
+        super(COCO_eval_segm_cmm, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales
         self.fix_size = fix_size
@@ -351,16 +327,17 @@ class COCO_eval_segm_scale(COCOSEGMSCALE):
 
         return img_id, out
 
-    def convert_eval_format(self, all_segments, input_scales):
+    def convert_eval_format(self, all_segments):
         # all_bboxes: num_samples x num_classes x 5
         segments = []
         for image_id in all_segments:
+            img = self.coco.loadImgs(image_id)[0]
+            w_img = int(img['width'])
+            h_img = int(img['height'])
             for cls_ind in all_segments[image_id]:
                 category_id = self.valid_ids[cls_ind - 1]
                 for segm in all_segments[image_id][cls_ind]:  # decode the segments to RLE
                     poly = segm[:-5].reshape((-1, 2))
-                    # poly[:, 0] = np.clip(poly[:, 0], 0, input_scales[image_id]['w'] - 1)
-                    # poly[:, 1] = np.clip(poly[:, 1], 0, input_scales[image_id]['h'] - 1)
 
                     x1, y1, x2, y2 = segm[-5:-1]
                     bbox = [x1, y1, x2 - x1, y2 - y1]
@@ -368,7 +345,7 @@ class COCO_eval_segm_scale(COCOSEGMSCALE):
 
                     poly = np.ndarray.flatten(poly).tolist()
 
-                    rles = cocomask.frPyObjects([poly], input_scales[image_id]['h'], input_scales[image_id]['w'])
+                    rles = cocomask.frPyObjects([poly], h_img, w_img)
                     rle = cocomask.merge(rles)
                     m = cocomask.decode(rle)
                     rle_new = encode_mask(m.astype(np.uint8))
@@ -382,24 +359,25 @@ class COCO_eval_segm_scale(COCOSEGMSCALE):
                     segments.append(detection)
         return segments
 
-    def run_eval(self, results, input_scales, save_dir=None):
-        segments = self.convert_eval_format(results, input_scales)
+    def run_eval(self, results, save_dir=None):
+        segments = self.convert_eval_format(results)
 
         if save_dir is not None:
-            result_json = os.path.join(save_dir, "segm_results.json")
+            result_json = os.path.join(save_dir, "segm_iterative_cmm_results.json")
             json.dump(segments, open(result_json, "w"))
 
         coco_segms = self.coco.loadRes(segments)
+        coco_eval_seg = COCOeval(self.coco, coco_segms, "segm")
+        coco_eval_seg.evaluate()
+        coco_eval_seg.accumulate()
+        coco_eval_seg.summarize()
+
         coco_eval = COCOeval(self.coco, coco_segms, "bbox")
         coco_eval.evaluate()
         coco_eval.accumulate()
         coco_eval.summarize()
 
-        coco_eval = COCOeval(self.coco, coco_segms, "segm")
-        coco_eval.evaluate()
-        coco_eval.accumulate()
-        coco_eval.summarize()
-        return coco_eval.stats
+        return coco_eval_seg.stats
 
     @staticmethod
     def collate_fn(batch):
@@ -408,25 +386,3 @@ class COCO_eval_segm_scale(COCOSEGMSCALE):
             out.append((img_id, {s: {k: torch.from_numpy(sample[s][k]).float()
             if k == 'image' else np.array(sample[s][k]) for k in sample[s]} for s in sample}))
         return out
-
-
-if __name__ == '__main__':
-    from tqdm import tqdm
-    import pickle
-
-    dataset = COCOSEGMSCALE('/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17',
-                            '/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17/my_annotation/train_instance_v32.json',
-                            '/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17/my_annotation/train_norm_shape_v32.json',
-                            '/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17/dictionary/train_dict_v32_n64_a0.01.npy',
-                            'train')
-    # for d in dataset:
-    #   b1 = d
-    #   pass
-
-    # pass
-    train_loader = torch.utils.data.DataLoader(dataset, batch_size=1,
-                                               shuffle=False, num_workers=1,
-                                               pin_memory=False, drop_last=True)
-
-    for b in tqdm(train_loader):
-        pass
