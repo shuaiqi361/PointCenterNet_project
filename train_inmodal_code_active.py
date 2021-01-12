@@ -18,7 +18,8 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
-from datasets.coco_segm_inmodal_code_active import COCOSEGMCMM, COCO_eval_segm_cmm
+# from datasets.coco_segm_inmodal_code_active import COCOSEGMCMM, COCO_eval_segm_cmm
+from datasets.coco_segm_scale import COCOSEGMCMM, COCO_eval_segm_cmm
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
@@ -30,7 +31,7 @@ from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
 from utils.losses import _neg_loss, _reg_loss, _bce_loss, active_reg_loss, norm_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
-from utils.post_process import ctsegm_amodal_cmm_decode
+from utils.post_process import ctsegm_amodal_cmm_decode, ctsegm_scale_decode
 
 # Training settings
 parser = argparse.ArgumentParser(description='inmodal_cmm')
@@ -172,29 +173,32 @@ def main():
             dict_tensor.requires_grad = False
 
             outputs = model(batch['image'])
-            # hmap, regs, w_h_, codes_1, codes_2, codes_3, offsets, active_ = zip(*outputs)
-            hmap, regs, w_h_, offsets, active_codes, inactive_codes, active_cls = zip(*outputs)
+            hmap, regs, w_h_, offsets, codes_1, codes_2, codes_3, active_cls = zip(*outputs)
+            # hmap, regs, w_h_, offsets, active_codes, inactive_codes, active_cls = zip(*outputs)
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
-
             active_cls = [_tranpose_and_gather_feature(r, batch['inds']) for r in active_cls]
             offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
             active_mask = batch['active']
-            inactive_mask = torch.abs(batch['active'] - 1)
-            active_codes = [_tranpose_and_gather_feature(r, batch['inds']) * active_mask for r in active_codes]
-            inactive_codes = [_tranpose_and_gather_feature(r, batch['inds']) * inactive_mask for r in inactive_codes]
+            c_1 = [_tranpose_and_gather_feature(r, batch['inds']) * active_mask for r in codes_1]
+            c_2 = [_tranpose_and_gather_feature(r, batch['inds']) * active_mask for r in codes_2]
+            c_3 = [_tranpose_and_gather_feature(r, batch['inds']) * active_mask for r in codes_3]
+            # active_codes = [_tranpose_and_gather_feature(r, batch['inds']) * active_mask for r in active_codes]
 
             active_cls_loss = _bce_loss(active_cls, batch['active'], batch['ind_masks'])
             hmap_loss = _neg_loss(hmap, batch['hmap'])
-            # occ_loss = _neg_loss(occ_map, batch['occ_map'], ex=4.0)
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
 
-            codes_loss = norm_reg_loss(active_codes, batch['codes'] * active_mask, batch['ind_masks']) \
-                         + norm_reg_loss(inactive_codes, batch['codes'] * inactive_mask, batch['ind_masks'])
+            codes_loss = (_reg_loss(c_1, batch['codes'] * active_mask, batch['ind_masks'])
+                          + _reg_loss(c_2, batch['codes'] * active_mask, batch['ind_masks'])
+                          + _reg_loss(c_3, batch['codes'] * active_mask, batch['ind_masks'])) / 3.
+
+            # codes_loss = norm_reg_loss(active_codes, batch['codes'] * active_mask, batch['ind_masks']) \
+            #              + norm_reg_loss(inactive_codes, batch['codes'] * inactive_mask, batch['ind_masks'])
 
             # cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
             #             + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
@@ -237,7 +241,6 @@ def main():
         max_per_image = 100
 
         results = {}
-        input_scales = {}
         speed_list = []
         with torch.no_grad():
             for inputs in val_loader:
@@ -247,16 +250,19 @@ def main():
                 for scale in inputs:
                     inputs[scale]['image'] = inputs[scale]['image'].to(cfg.device)
 
-                    hmap, regs, w_h_, offsets, active_codes, inactive_codes, active_cls = model(inputs[scale]['image'])[-1]
+                    # hmap, regs, w_h_, offsets, active_codes, inactive_codes, active_cls = model(inputs[scale]['image'])[-1]
+                    hmap, regs, w_h_, offsets, _, _, active_codes, active_cls = model(inputs[scale]['image'])[-1]
                     active_cls = torch.sigmoid(active_cls) > 0.5
                     active_mask = active_cls * 1
-                    inactive_mask = (~ active_cls) * 1
-                    codes = active_codes * active_mask + inactive_codes * inactive_mask
+                    # inactive_mask = (~ active_cls) * 1
+                    codes = active_codes * active_mask  # + inactive_codes * inactive_mask
                     output = [hmap, regs, w_h_, codes, offsets]
-
-                    segms = ctsegm_amodal_cmm_decode(*output,
-                                                     torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
-                                                     K=cfg.test_topk)
+                    segms = ctsegm_scale_decode(*output,
+                                                torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
+                                                K=cfg.test_topk)
+                    # segms = ctsegm_amodal_cmm_decode(*output,
+                    #                                  torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
+                    #                                  K=cfg.test_topk)
                     segms = segms.detach().cpu().numpy().reshape(1, -1, segms.shape[2])[0]
 
                     top_preds = {}

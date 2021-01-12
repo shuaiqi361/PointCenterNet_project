@@ -209,6 +209,8 @@ class COCOSEGMCMM(data.Dataset):
         shapes_ = np.zeros((self.max_objs, self.n_vertices * 2), dtype=np.float32)  # gt amodal segmentation polygons
         center_offsets = np.zeros((self.max_objs, 2), dtype=np.float32)  # gt mass centers to bbox center
         codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)
+        activated_codes = np.zeros((self.max_objs, self.n_codes),
+                                   dtype=np.int64)  # keep track of codes that is activated
 
         regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for offsets of shape center
         inds = np.zeros((self.max_objs,), dtype=np.int64)
@@ -264,13 +266,14 @@ class COCOSEGMCMM(data.Dataset):
                 center_offsets[k] = mass_center - obj_c
                 codes_[k], _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
                                           lmbda=self.sparse_alpha, max_iter=60)
+                activated_codes[k] = (np.abs(codes_[k]) > 1e-4) * 1  # active codes annotated 1
 
                 w_h_[k] = 1. * w, 1. * h
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
                 ind_masks[k] = 1
 
-        return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets,
+        return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets, 'active': activated_codes,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
                 'c': center, 's': scale, 'img_id': img_id}
 
