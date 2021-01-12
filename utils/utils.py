@@ -10,13 +10,13 @@ def _gather_feature(feat, ind, mask=None):
     if mask is not None:
         mask = mask.unsqueeze(2).expand_as(feat)
         feat = feat[mask]
-        feat = feat.view(-1, dim)
+        feat = feat.view(-1, dim).contiguous()
     return feat
 
 
 def _tranpose_and_gather_feature(feat, ind):
     feat = feat.permute(0, 2, 3, 1).contiguous()
-    feat = feat.view(feat.size(0), -1, feat.size(3))
+    feat = feat.view(feat.size(0), -1, feat.size(3)).contiguous()
     feat = _gather_feature(feat, ind)
     return feat
 
