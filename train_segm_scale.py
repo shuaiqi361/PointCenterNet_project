@@ -26,7 +26,7 @@ from nets.resdcn_inmodal_scaled_code import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, _bce_loss, active_reg_loss, norm_reg_loss
+from utils.losses import _neg_loss, _reg_loss, _bce_loss, active_reg_loss, norm_reg_loss, sparse_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_scale_decode
 
@@ -188,9 +188,13 @@ def main():
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
-            codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
-                          + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
-                          + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
+            # codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
+            #               + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
+            #               + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
+
+            codes_loss = (sparse_reg_loss(c_1, batch['codes'], batch['ind_masks'])
+                          + sparse_reg_loss(c_2, batch['codes'], batch['ind_masks'])
+                          + sparse_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
 
             # cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
             #             + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
