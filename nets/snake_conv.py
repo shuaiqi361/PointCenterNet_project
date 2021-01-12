@@ -80,12 +80,7 @@ class Snake(nn.Module):
         )
 
     def forward(self, x):
-        # states = []
         x = self.head(x)
-        # states.append(x)
-        # for i in range(self.res_layer_num):
-        #     x = self.__getattr__('res' + str(i))(x, adj) + x
-        #     states.append(x)
 
         x1 = self.conv1(x)
         x2 = self.conv2(x1)
