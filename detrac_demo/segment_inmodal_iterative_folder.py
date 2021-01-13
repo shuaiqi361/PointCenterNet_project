@@ -269,18 +269,18 @@ def main():
                         # cv2.rectangle(output_image, pt1=(int(bbox[0]), int(bbox[1])),
                         #               pt2=(int(bbox[2]), int(bbox[3])),
                         #               color=colors[lab], thickness=2)
-                        # cv2.rectangle(output_image, pt1=(int(bbox[0]), int(bbox[1])),
-                        #               pt2=(int(bbox[2]), int(bbox[3])),
-                        #               color=nice_colors[names[lab]], thickness=2)
+                        cv2.rectangle(output_image, pt1=(int(bbox[0]), int(bbox[1])),
+                                      pt2=(int(bbox[2]), int(bbox[3])),
+                                      color=nice_colors[names[lab]], thickness=2)
                         # cv2.putText(output_image, text, org=(int(text_location[0]), int(text_location[3])),
                         #             fontFace=cv2.FONT_HERSHEY_COMPLEX, thickness=1, fontScale=0.3,
                         #             color=nice_colors[names[lab]])
 
-                        cv2.polylines(output_image, [polygon.astype(np.int32)], True, color=nice_colors[names[lab]],
-                                      thickness=2)
-                        cv2.drawContours(blend_mask, [polygon.astype(np.int32)], contourIdx=-1,
-                                         color=nice_colors[names[lab]],
-                                         thickness=-1)
+                        # cv2.polylines(output_image, [polygon.astype(np.int32)], True, color=nice_colors[names[lab]],
+                        #               thickness=2)
+                        # cv2.drawContours(blend_mask, [polygon.astype(np.int32)], contourIdx=-1,
+                        #                  color=nice_colors[names[lab]],
+                        #                  thickness=-1)
 
                         # add to text file
                         new_line = '{0},{1},{2:.3f},{3:.3f},{4:.3f},{5:.3f},{6:.4f}\n'.format(str(frame_id + 1),
@@ -295,9 +295,9 @@ def main():
                         counter += 1
                         text_out.write(new_line)
 
-            dst_img = cv2.addWeighted(output_image, 0.4, blend_mask, 0.6, 0)
-            dst_img[blend_mask == 0] = output_image[blend_mask == 0]
-            output_image = dst_img
+            # dst_img = cv2.addWeighted(output_image, 0.4, blend_mask, 0.6, 0)
+            # dst_img[blend_mask == 0] = output_image[blend_mask == 0]
+            # output_image = dst_img
 
             cv2.imshow('Frames', output_image)
             video_out.write(output_image)

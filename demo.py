@@ -20,13 +20,13 @@ from datasets.coco import COCO_MEAN, COCO_STD, COCO_NAMES
 from datasets.pascal import VOC_MEAN, VOC_STD, VOC_NAMES
 
 from nets.hourglass import get_hourglass
-from nets.resdcn import get_pose_net
+from nets.resdcn import get_pose_resdcn
 
-from utils.utils import load_model
+from utils.utils import load_demo_model
 from utils.image import transform_preds, get_affine_transform
 from utils.post_process import ctdet_decode
 
-from nms.nms import soft_nms
+# from nms.nms import soft_nms
 
 # from nms import soft_nms
 
@@ -42,7 +42,7 @@ parser.add_argument('--ckpt_dir', type=str, default='./ckpt/pascal_resdcn18_512/
 
 parser.add_argument('--arch', type=str, default='resdcn_18')
 
-parser.add_argument('--dataset', type=str, default='pascal')
+parser.add_argument('--dataset', type=str, default='pascal', choices=['coco', 'pascal'])
 parser.add_argument('--img_size', type=int, default=512)
 
 parser.add_argument('--test_flip', action='store_true')
@@ -105,12 +105,12 @@ def main():
   if 'hourglass' in cfg.arch:
     model = get_hourglass[cfg.arch]
   elif 'resdcn' in cfg.arch:
-    model = get_pose_net(num_layers=int(cfg.arch.split('_')[-1]),
+    model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]),
                          num_classes=80 if cfg.dataset == 'coco' else 20)
   else:
     raise NotImplementedError
 
-  model = load_model(model, cfg.ckpt_dir)
+  model = load_demo_model(model, cfg.ckpt_dir)
   model = model.to(cfg.device)
   model.eval()
 
@@ -143,8 +143,8 @@ def main():
     bbox_and_scores = {}
     for j in range(1, 81 if cfg.dataset == 'coco' else 21):
       bbox_and_scores[j] = np.concatenate([d[j] for d in detections], axis=0)
-      if len(cfg.test_scales) > 1:
-        soft_nms(bbox_and_scores[j], Nt=0.5, method=2)
+      # if len(cfg.test_scales) > 1:
+      #   soft_nms(bbox_and_scores[j], Nt=0.5, method=2)
     scores = np.hstack([bbox_and_scores[j][:, 4] for j in range(1, 81 if cfg.dataset == 'coco' else 21)])
 
     if len(scores) > max_per_image:
