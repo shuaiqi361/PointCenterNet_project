@@ -524,7 +524,7 @@ def ctsegm_code_shape_decode(hmap, regs, w_h_, shapes_, K=100):
     # ys = ys.view(batch, K, 1) + regs[:, :, 1:2]
 
     w_h_ = _tranpose_and_gather_feature(w_h_, inds)
-    w_h_ = w_h_.view(batch, K, 4)
+    w_h_ = w_h_.view(batch, K, 2)
 
     shapes_ = shapes_.view(batch, K, 64)
 

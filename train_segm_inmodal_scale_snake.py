@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
-from datasets.coco_segm_dcn_snake import COCOSEGMSNAKE, COCOSEGMSNAKEEVAL
+from datasets.coco_segm_scale_snake_inmodal import COCOSEGMSNAKE, COCOSEGMSNAKEEVAL
 from datasets.pascal import PascalVOC, PascalVOC_eval
 
 from nets.resdcn_inmodal_snake import get_pose_resdcn
@@ -46,7 +46,7 @@ parser.add_argument('--dictionary_file', type=str)
 parser.add_argument('--dataset', type=str, default='coco', choices=['coco', 'pascal'])
 parser.add_argument('--arch', type=str, default='resdcn')
 
-parser.add_argument('--img_size', type=int, default=512)
+parser.add_argument('--img_size', type=str, default='512,512')
 parser.add_argument('--split_ratio', type=float, default=1.0)
 parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
@@ -55,6 +55,7 @@ parser.add_argument('--shape_loss_weight', type=float, default=0.1)
 
 parser.add_argument('--lr', type=float, default=5e-4)
 parser.add_argument('--lr_step', type=str, default='90,120')
+parser.add_argument('--gamma', type=float, default=0.1)
 parser.add_argument('--batch_size', type=int, default=48)
 parser.add_argument('--num_epochs', type=int, default=140)
 
@@ -75,9 +76,11 @@ os.makedirs(cfg.log_dir, exist_ok=True)
 os.makedirs(cfg.ckpt_dir, exist_ok=True)
 
 cfg.lr_step = [int(s) for s in cfg.lr_step.split(',')]
+cfg.img_size = tuple([int(s) for s in cfg.img_size.split(',')])
 
 
 def main():
+    best_mAP = 0.0
     saver = create_saver(cfg.local_rank, save_dir=cfg.ckpt_dir)
     logger = create_logger(cfg.local_rank, save_dir=cfg.log_dir)
     summary_writer = create_summary(cfg.local_rank, log_dir=cfg.log_dir)
@@ -147,7 +150,7 @@ def main():
         torch.cuda.empty_cache()
 
     optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.2)
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=cfg.gamma)
 
     def train(epoch):
         print('\n Epoch: %d' % epoch)
@@ -162,7 +165,7 @@ def main():
             dict_tensor.requires_grad = False
 
             outputs = model(batch['image'], batch['inds'], batch['centers'])
-            hmap, regs, w_h_, codes_, offsets, codes_1, codes_2, codes_3, shapes = zip(*outputs)
+            hmap, regs, w_h_, offsets, codes_1, codes_2, codes_3, shapes = zip(*outputs)
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
@@ -181,14 +184,14 @@ def main():
                           + sparse_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
 
             # shapes_loss = contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'], roll=False)
-            mask = batch['ind_masks'][:, :, None].expand_as(batch['shapes']).float()
-            shapes_loss = sum(nn.functional.l1_loss(shapes * mask, batch['centered_shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4))
+            mask = batch['ind_masks'][:, :, None].expand_as(batch['centered_shapes']).float()
+            shapes_loss = nn.functional.l1_loss(shapes[-1] * mask, batch['centered_shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4)
 
             # shapes_loss = (sum([nn.functional.l1_loss(p.view(p.size(0), p.size(1), -1) * mask, batch['shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for p in polys_1])
             #               + sum([nn.functional.l1_loss(p.view(p.size(0), p.size(1), -1) * mask, batch['shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for p in polys_2])
             #               + sum([nn.functional.l1_loss(p.view(p.size(0), p.size(1), -1) * mask, batch['shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for p in shapes_])) / 3.
 
-            loss = 2 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + \
+            loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + \
                    cfg.shape_loss_weight * shapes_loss + 0.1 * offsets_loss
 
             optimizer.zero_grad()
@@ -206,7 +209,7 @@ def main():
                 step = len(train_loader) * epoch + batch_idx
                 summary_writer.add_scalar('hmap_loss', hmap_loss.item(), step)
                 summary_writer.add_scalar('reg_loss', reg_loss.item(), step)
-                summary_writer.add_scalar('offset_loss', w_h_loss.item(), step)
+                summary_writer.add_scalar('w_h_loss', w_h_loss.item(), step)
                 summary_writer.add_scalar('code_loss', codes_loss.item(), step)
                 summary_writer.add_scalar('shape_loss', shapes_loss.item(), step)
                 summary_writer.add_scalar('offsets_loss', offsets_loss.item(), step)
@@ -288,9 +291,13 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
-            val_map(epoch)
-            print(saver.save(model.module.state_dict(), 'checkpoint'))
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
+            stat = val_map(epoch)
+            if stat > best_mAP:
+                print('Overall mAP {:.3f} is improving ...'.format(stat))
+                print_log(saver.save(model.module.state_dict(), 'checkpoint'))
+                best_mAP = stat
+
         lr_scheduler.step()
 
         epoch_time = (time.time() - start) / 3600. / 24.

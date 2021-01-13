@@ -60,7 +60,7 @@ def encode_mask(mask):
 
 
 class COCOSEGMSNAKE(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=512, padding=31):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=31):
         super(COCOSEGMSNAKE, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
@@ -85,8 +85,8 @@ class COCOSEGMSNAKE(data.Dataset):
         self.max_objs = 128
         self.padding = padding
         self.down_ratio = 4
-        self.img_size = {'h': img_size, 'w': img_size}
-        self.fmap_size = {'h': img_size // self.down_ratio, 'w': img_size // self.down_ratio}
+        self.img_size = {'h': img_size[1], 'w': img_size[0]}
+        self.fmap_size = {'h': img_size[1] // self.down_ratio, 'w': img_size[0] // self.down_ratio}
         self.rand_scales = np.arange(0.6, 1.3, 0.1)
         self.gaussian_iou = 0.7
 

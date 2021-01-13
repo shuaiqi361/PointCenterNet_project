@@ -248,7 +248,7 @@ class SnakeResDCN(nn.Module):
         obj_polygons[..., 0] = obj_polygons[..., 0] / (w / 2.) - 1  # the grid argument is in the range [-1, 1]
         obj_polygons[..., 1] = obj_polygons[..., 1] / (h / 2.) - 1
 
-        vert_feature = nn.functional.grid_sample(fmaps, grid=obj_polygons, mode='bilinear',
+        vert_feature = nn.functional.grid_sample(fmaps, grid=obj_polygons, mode='bilinear', align_corners=True,
                                                  padding_mode="border")  # (bs, C, max_obj, n_vertices)
 
         return vert_feature.permute(0, 2, 1, 3).contiguous()  # (bs, max_obj, C, n_vertices) adapt to conv1d
@@ -412,7 +412,7 @@ class SnakeResDCN(nn.Module):
         batch_v_feats = self.snake(vertex_feats.view(bs * self.max_obj, 64 + 2, 32))
 
         offsets = batch_v_feats.view(bs, self.max_obj, 2, 32).permute(0, 1, 3, 2).contiguous()
-        polys_out = segms.detach() + offsets.view(bs, self.max_obj, -1)  # centered gt polygons
+        polys_out = segms.detach() + offsets  # centered gt polygons
 
         # # second snake
         # vertex_feats = self.get_vertex_features(fmap, polys_1)  # (N, max_obj, C, 32)
@@ -436,7 +436,7 @@ class SnakeResDCN(nn.Module):
         # offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
         # polys_3 = polys_2 + offsets.permute(0, 1, 3, 2).contiguous()
 
-        out = [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, polys_out]]
+        out = [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, polys_out.view(bs, self.max_obj, -1)]]
         if gt_center is None and inds is None:  # during evaluation
             final_shape = polys + offsets
             return [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, final_shape.view(bs, self.max_obj, -1)]]
