@@ -159,6 +159,7 @@ def main():
 
     optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=cfg.gamma)
+    BCE = nn.BCEWithLogitsLoss(reduction='sum')
 
     def train(epoch):
         print_log('\n Epoch: %d' % epoch)
@@ -187,7 +188,10 @@ def main():
             c_3 = [_tranpose_and_gather_feature(r, batch['inds']) * active_mask for r in codes_3]
             # active_codes = [_tranpose_and_gather_feature(r, batch['inds']) * active_mask for r in active_codes]
 
-            active_cls_loss = _bce_loss(active_cls, batch['active'], batch['ind_masks'])
+            mask = batch['ind_masks'][:, :, None].expand_as(batch['active']).float()
+            active_cls_loss = sum(BCE(r * mask, batch['active'] * mask) / (mask.sum() + 1e-4) for r in active_cls) / len(active_cls)
+
+            # active_cls_loss = _bce_loss(active_cls, batch['active'], batch['ind_masks'])
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
