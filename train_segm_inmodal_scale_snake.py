@@ -165,7 +165,7 @@ def main():
             dict_tensor.requires_grad = False
 
             outputs = model(batch['image'], batch['inds'], batch['centers'])
-            hmap, regs, w_h_, offsets, codes_1, codes_2, codes_3, shapes = zip(*outputs)
+            hmap, regs, w_h_, offsets, codes_1, codes_2, codes_3, shapes, shapes_1 = zip(*outputs)
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
@@ -185,7 +185,8 @@ def main():
 
             # shapes_loss = contour_mapping_loss(codes_, shapes_, batch['shapes'], batch['ind_masks'], roll=False)
             mask = batch['ind_masks'][:, :, None].expand_as(batch['centered_shapes']).float()
-            shapes_loss = nn.functional.l1_loss(shapes[-1] * mask, batch['centered_shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4)
+            shapes_loss = (sum(nn.functional.l1_loss(s * mask, batch['centered_shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for s in shapes) \
+                        + sum(nn.functional.l1_loss(s * mask, batch['centered_shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for s in shapes_1)) / len(shapes) / 2.
 
             # shapes_loss = (sum([nn.functional.l1_loss(p.view(p.size(0), p.size(1), -1) * mask, batch['shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for p in polys_1])
             #               + sum([nn.functional.l1_loss(p.view(p.size(0), p.size(1), -1) * mask, batch['shapes'] * mask, reduction='sum') / (mask.sum() + 1e-4) for p in polys_2])
@@ -235,7 +236,7 @@ def main():
                         _, _, input_h, input_w = inputs[scale]['image'].shape
                         input_scales[img_id] = {'h': input_h, 'w': input_w}
 
-                    hmap, regs, w_h_, _, _, _, _, shapes_ = model(inputs[scale]['image'])[-1]
+                    hmap, regs, w_h_, _, _, _, _, _, shapes_ = model(inputs[scale]['image'])[-1]
                     output = [hmap, regs, w_h_, shapes_]
 
                     segms = ctsegm_code_shape_decode(*output, K=cfg.test_topk)
@@ -285,6 +286,8 @@ def main():
         print(eval_results)
         summary_writer.add_scalar('val_mAP/mAP', eval_results[0], epoch)
         print('Average speed on val set:{:.2f}'.format(1. / np.mean(speed_list)))
+
+        return eval_results[0]
 
     print('Starting training...')
     for epoch in range(1, cfg.num_epochs + 1):

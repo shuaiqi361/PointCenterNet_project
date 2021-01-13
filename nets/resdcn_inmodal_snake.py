@@ -157,6 +157,7 @@ class SnakeResDCN(nn.Module):
         # self.snake_2 = Snake(state_dim=64, feature_dim=64 + 2, n_adj=self.snake_adj)
         # self.snake_3 = Snake(state_dim=64, feature_dim=64 + 2, n_adj=self.snake_adj)
         self.snake = Snake(state_dim=64, feature_dim=head_conv + 2, n_adj=self.snake_adj)
+        self.snake_1 = Snake(state_dim=64, feature_dim=head_conv + 2, n_adj=self.snake_adj)
 
         if head_conv > 0:
             # ------- amodal features
@@ -234,6 +235,7 @@ class SnakeResDCN(nn.Module):
         fill_fc_weights(self.compress_2)
         fill_fc_weights(self.compress_3)
         fill_fc_weights(self.snake)
+        fill_fc_weights(self.snake_1)
 
     def get_vertex_features(self, fmaps, poly):
         """
@@ -404,7 +406,7 @@ class SnakeResDCN(nn.Module):
         polys = segms + gt_center.view(bs, self.max_obj, 1, 2)
 
         # first snake
-        vertex_feats = self.get_vertex_features(fmap_out, polys)  # (N, max_obj, C, 32)
+        vertex_feats = self.get_vertex_features(fmap_out, polys.detach())  # (N, max_obj, C, 32)
         vertex_feats = torch.cat([vertex_feats, centered_poly], dim=-2)  # (N, max_obj, C + 2, 32)
         # batch_v_feats = []
         # for n in range(bs):
@@ -415,16 +417,14 @@ class SnakeResDCN(nn.Module):
         polys_out = segms.detach() + offsets  # centered gt polygons
 
         # # second snake
-        # vertex_feats = self.get_vertex_features(fmap, polys_1)  # (N, max_obj, C, 32)
-        # vertex_feats = torch.cat([vertex_feats, (polys_1 - gt_center.view(bs, self.max_obj, 1, 2)).permute(0, 1, 3, 2)],
-        #                          dim=-2).detach()
-        # batch_v_feats = []
-        # for n in range(bs):
-        #     batch_v_feats.append(self.snake_2(vertex_feats[n]).unsqueeze(0))
-        #
-        # offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
-        # polys_2 = polys_1 + offsets.permute(0, 1, 3, 2).contiguous()
-        #
+        centered_poly = offsets.detach().permute(0, 1, 3, 2).contiguous() + centered_poly
+        vertex_feats = self.get_vertex_features(fmap_out, polys_out.detach())  # (N, max_obj, C, 32)
+        vertex_feats = torch.cat([vertex_feats, centered_poly], dim=-2)
+        batch_v_feats = self.snake_1(vertex_feats.view(bs * self.max_obj, 64 + 2, 32))
+
+        offsets = batch_v_feats.view(bs, self.max_obj, 2, 32).permute(0, 1, 3, 2).contiguous()
+        polys_out_1 = polys_out.detach() + offsets
+
         # # third snake
         # vertex_feats = self.get_vertex_features(fmap, polys_2)  # (N, max_obj, C, 32)
         # vertex_feats = torch.cat([vertex_feats, (polys_2 - gt_center.view(bs, self.max_obj, 1, 2)).permute(0, 1, 3, 2)],
@@ -436,10 +436,11 @@ class SnakeResDCN(nn.Module):
         # offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
         # polys_3 = polys_2 + offsets.permute(0, 1, 3, 2).contiguous()
 
-        out = [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, polys_out.view(bs, self.max_obj, -1)]]
-        if gt_center is None and inds is None:  # during evaluation
-            final_shape = polys + offsets
-            return [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, final_shape.view(bs, self.max_obj, -1)]]
+        out = [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, polys_out.view(bs, self.max_obj, -1), polys_out_1.view(bs, self.max_obj, -1)]]
+        if gt_center is None and inds is None:  # during evaluation, add back the center location
+            shape_0 = polys_out + gt_center.view(bs, self.max_obj, 1, 2)
+            final_shape = polys_out_1 + gt_center.view(bs, self.max_obj, 1, 2)
+            return [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, shape_0.view(bs, self.max_obj, -1), final_shape.view(bs, self.max_obj, -1)]]
         else:
             return out
 
