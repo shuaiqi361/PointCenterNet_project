@@ -305,7 +305,7 @@ def main():
     for epoch in range(1, cfg.num_epochs + 1):
         start = time.time()
         train_sampler.set_epoch(epoch)
-        train(epoch)
+        # train(epoch)
         if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 1:
             stat = val_map(epoch)
             if stat > best_mAP:
