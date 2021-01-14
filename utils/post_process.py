@@ -518,10 +518,10 @@ def ctsegm_code_shape_decode(hmap, regs, w_h_, shapes_, K=100):
     hmap = _nms(hmap)  # perform nms on heatmaps
     scores, inds, clses, ys, xs = _topk(hmap, K=K)
 
-    # regs = _tranpose_and_gather_feature(regs, inds)
-    # regs = regs.view(batch, K, 2)
-    # xs = xs.view(batch, K, 1) + regs[:, :, 0:1]
-    # ys = ys.view(batch, K, 1) + regs[:, :, 1:2]
+    regs = _tranpose_and_gather_feature(regs, inds)
+    regs = regs.view(batch, K, 2)
+    xs = xs.view(batch, K, 1) + regs[:, :, 0:1]
+    ys = ys.view(batch, K, 1) + regs[:, :, 1:2]
 
     w_h_ = _tranpose_and_gather_feature(w_h_, inds)
     w_h_ = w_h_.view(batch, K, 2)

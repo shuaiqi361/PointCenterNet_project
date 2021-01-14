@@ -356,6 +356,11 @@ class SnakeResDCN(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x, inds=None, gt_center=None):
+        if inds is None or gt_center is None:
+            mode = 'test'
+        else:
+            mode = 'train'
+
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -381,12 +386,13 @@ class SnakeResDCN(nn.Module):
         xc_2 = self.compress_2(self.codes_2(xc_1) + xc_1)
         xc_3 = self.compress_3(self.codes_3(xc_2) + xc_2)
 
-        fmap_out = amodal_x.detach()
+        fmap_out = inmodal_x.detach()
 
         bs, ch, h, w = fmap_out.size()
         if inds is None:  # This is for evaluation
-            detached_hmap_out = self._nms(hmap_out.detach())  # perform nms on heatmaps
-            _, inds, _, ys, xs = self._topk(detached_hmap_out.detach(), k=self.max_obj)
+            with torch.no_grad():
+                detached_hmap_out = self._nms(hmap_out.detach())  # perform nms on heatmaps
+                _, inds, _, ys, xs = self._topk(detached_hmap_out, k=self.max_obj)
 
         # extract vertices features from the fmap
         obj_codes = self._tranpose_and_gather_feature(xc_3.detach(), inds)
@@ -395,10 +401,11 @@ class SnakeResDCN(nn.Module):
         obj_w_h = self._tranpose_and_gather_feature(w_h_out.detach(), inds)
 
         if gt_center is None:
-            obj_regs = obj_regs.view(bs, self.max_obj, 2)
-            xs = xs.view(bs, self.max_obj, 1) + obj_regs[:, :, 0:1] + obj_offsets[:, :, 0:1]
-            ys = ys.view(bs, self.max_obj, 1) + obj_regs[:, :, 1:2] + obj_offsets[:, :, 1:2]
-            gt_center = torch.cat([xs, ys], dim=2)
+            with torch.no_grad():
+                obj_regs = obj_regs.view(bs, self.max_obj, 2)
+                xs = xs.view(bs, self.max_obj, 1) + obj_regs[:, :, 0:1] + obj_offsets[:, :, 0:1]
+                ys = ys.view(bs, self.max_obj, 1) + obj_regs[:, :, 1:2] + obj_offsets[:, :, 1:2]
+                gt_center = torch.cat([xs, ys], dim=2)
 
         obj_codes = obj_codes.view(bs, self.max_obj, 64)
         segms = torch.matmul(obj_codes, self.dict_tensor).view(bs, self.max_obj, 32, 2) * obj_w_h.view(bs, self.max_obj, 1, 2) / 2.
@@ -417,9 +424,9 @@ class SnakeResDCN(nn.Module):
         polys_out = segms.detach() + offsets  # centered gt polygons
 
         # # second snake
-        centered_poly = offsets.detach().permute(0, 1, 3, 2).contiguous() + centered_poly
-        vertex_feats = self.get_vertex_features(fmap_out, polys_out.detach())  # (N, max_obj, C, 32)
-        vertex_feats = torch.cat([vertex_feats, centered_poly], dim=-2)
+        sample_poly = polys_out.detach() + gt_center.view(bs, self.max_obj, 1, 2)
+        vertex_feats = self.get_vertex_features(fmap_out, sample_poly)  # (N, max_obj, C, 32)
+        vertex_feats = torch.cat([vertex_feats, polys_out.detach().permute(0, 1, 3, 2).contiguous()], dim=-2)
         batch_v_feats = self.snake_1(vertex_feats.view(bs * self.max_obj, 64 + 2, 32))
 
         offsets = batch_v_feats.view(bs, self.max_obj, 2, 32).permute(0, 1, 3, 2).contiguous()
@@ -436,13 +443,13 @@ class SnakeResDCN(nn.Module):
         # offsets = torch.cat(batch_v_feats, dim=0)  # (N, 2, max_obj, 32)
         # polys_3 = polys_2 + offsets.permute(0, 1, 3, 2).contiguous()
 
-        out = [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, polys_out.view(bs, self.max_obj, -1), polys_out_1.view(bs, self.max_obj, -1)]]
-        if gt_center is None and inds is None:  # during evaluation, add back the center location
-            shape_0 = polys_out + gt_center.view(bs, self.max_obj, 1, 2)
-            final_shape = polys_out_1 + gt_center.view(bs, self.max_obj, 1, 2)
+        if mode == 'test':  # during evaluation, add back the center location
+            with torch.no_grad():
+                shape_0 = polys_out + gt_center.view(bs, self.max_obj, 1, 2)
+                final_shape = polys_out_1 + gt_center.view(bs, self.max_obj, 1, 2)
             return [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, shape_0.view(bs, self.max_obj, -1), final_shape.view(bs, self.max_obj, -1)]]
         else:
-            return out
+            return [[hmap_out, regs_out, w_h_out, offsets_out, xc_1, xc_2, xc_3, polys_out.view(bs, self.max_obj, -1), polys_out_1.view(bs, self.max_obj, -1)]]
 
     def init_weights(self, num_layers):
         url = model_urls['resnet{}'.format(num_layers)]
