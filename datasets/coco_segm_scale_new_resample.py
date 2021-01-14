@@ -14,7 +14,7 @@ from scipy.signal import resample
 from utils.image import get_border, get_affine_transform, affine_transform, color_aug
 from utils.image import draw_umich_gaussian, gaussian_radius
 from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon_using_mask, \
-    turning_angle_resample, uniformsample, close_contour
+    turning_angle_resample, uniformsample
 
 COCO_NAMES = ['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
               'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
@@ -111,13 +111,15 @@ class COCOSEGMCMM(data.Dataset):
         img = self.coco.loadImgs(ids=[img_id])[0]
         w_img = int(img['width'])
         h_img = int(img['height'])
+        # if w_img < 2 or h_img < 2:
+        #     continue
 
         labels = []
         bboxes = []
         shapes = []
 
         for anno in annotations:
-            if anno['iscrowd'] == 1:  # Excludes crowd objects
+            if anno['iscrowd'] == 1 or type(anno['segmentation']) != list:  # Excludes crowd objects
                 continue
 
             if len(anno['segmentation']) > 1:
@@ -131,14 +133,17 @@ class COCOSEGMCMM(data.Dataset):
             contour = np.array(polygons).reshape((-1, 2))
 
             # Downsample the contour to fix number of vertices
+            if cv2.contourArea(contour.astype(np.int32)) < 6:
+                continue
+
             fixed_contour = uniformsample(contour, self.n_vertices)
 
             fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
             fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
 
-            contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
-            if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
-                continue
+            # contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
+            # if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
+            #     continue
 
             updated_bbox = [np.min(fixed_contour[:, 0]), np.min(fixed_contour[:, 1]),
                             np.max(fixed_contour[:, 0]), np.max(fixed_contour[:, 1])]
