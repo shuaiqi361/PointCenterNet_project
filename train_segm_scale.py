@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
-from datasets.coco_segm_scale import COCOSEGMCMM, COCO_eval_segm_cmm
+from datasets.coco_segm_scale_new_resample import COCOSEGMCMM, COCO_eval_segm_cmm
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
@@ -51,6 +51,7 @@ parser.add_argument('--img_size', type=str, default='896,384')
 parser.add_argument('--split_ratio', type=float, default=1.0)
 parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
+parser.add_argument('--sparse_alpha', type=float, default=0.01)
 parser.add_argument('--cmm_loss_weight', type=float, default=1)
 parser.add_argument('--code_loss_weight', type=float, default=1)
 parser.add_argument('--active_weight', type=float, default=1)
@@ -108,7 +109,8 @@ def main():
 
     Dataset = COCOSEGMCMM if cfg.dataset == 'coco' else KINSSEGMCMM
     train_dataset = Dataset(cfg.data_dir, cfg.dictionary_file,
-                            'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size)
+                            'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size, n_vertices=cfg.n_vertices,
+                            n_coeffs=cfg.n_codes, sparse_alpha=cfg.sparse_alpha)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,
                                                                     num_replicas=num_gpus,
                                                                     rank=cfg.local_rank)
@@ -136,7 +138,7 @@ def main():
                      dictionary=torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device))
     elif 'resdcn' in cfg.arch:
         model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64,
-                                num_classes=train_dataset.num_classes)
+                                num_classes=train_dataset.num_classes, num_codes=cfg.n_codes)
     else:
         raise NotImplementedError
 

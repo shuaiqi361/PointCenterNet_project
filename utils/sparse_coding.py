@@ -6,6 +6,78 @@ from sklearn.utils.extmath import randomized_svd, row_norms
 from sklearn.utils import check_array, check_random_state, gen_even_slices, gen_batches, shuffle
 from scipy.spatial import distance
 import cv2
+from skimage import measure
+
+
+def close_contour(contour):
+    if not np.array_equal(contour[0], contour[-1]):
+        contour = np.vstack((contour, contour[0]))
+    return contour
+
+
+def uniformsample(pgtnp_px2, newpnum):
+    pnum, cnum = pgtnp_px2.shape
+    assert cnum == 2
+
+    idxnext_p = (np.arange(pnum, dtype=np.int32) + 1) % pnum
+    pgtnext_px2 = pgtnp_px2[idxnext_p]
+    edgelen_p = np.sqrt(np.sum((pgtnext_px2 - pgtnp_px2) ** 2, axis=1))
+    edgeidxsort_p = np.argsort(edgelen_p)
+
+    # two cases
+    # we need to remove gt points
+    # we simply remove shortest paths
+    if pnum > newpnum:
+        edgeidxkeep_k = edgeidxsort_p[pnum - newpnum:]
+        edgeidxsort_k = np.sort(edgeidxkeep_k)
+        pgtnp_kx2 = pgtnp_px2[edgeidxsort_k]
+        assert pgtnp_kx2.shape[0] == newpnum
+        return pgtnp_kx2
+    # we need to add gt points
+    # we simply add it uniformly
+    else:
+        edgenum = np.round(edgelen_p * newpnum / np.sum(edgelen_p)).astype(np.int32)
+        for i in range(pnum):
+            if edgenum[i] == 0:
+                edgenum[i] = 1
+
+        # after round, it may has 1 or 2 mismatch
+        edgenumsum = np.sum(edgenum)
+        if edgenumsum != newpnum:
+
+            if edgenumsum > newpnum:
+
+                id = -1
+                passnum = edgenumsum - newpnum
+                while passnum > 0:
+                    edgeid = edgeidxsort_p[id]
+                    if edgenum[edgeid] > passnum:
+                        edgenum[edgeid] -= passnum
+                        passnum -= passnum
+                    else:
+                        passnum -= edgenum[edgeid] - 1
+                        edgenum[edgeid] -= edgenum[edgeid] - 1
+                        id -= 1
+            else:
+                id = -1
+                edgeid = edgeidxsort_p[id]
+                edgenum[edgeid] += newpnum - edgenumsum
+
+        assert np.sum(edgenum) == newpnum
+
+        psample = []
+        for i in range(pnum):
+            pb_1x2 = pgtnp_px2[i:i + 1]
+            pe_1x2 = pgtnext_px2[i:i + 1]
+
+            pnewnum = edgenum[i]
+            wnp_kx1 = np.arange(edgenum[i], dtype=np.float32).reshape(-1, 1) / edgenum[i]
+
+            pmids = pb_1x2 * (1 - wnp_kx1) + pe_1x2 * wnp_kx1
+            psample.append(pmids)
+
+        psamplenp = np.concatenate(psample, axis=0)
+        return psamplenp
 
 
 def get_connected_polygon_using_mask(polygons, img_hw, n_vertices, closing_max_kernel=50):
