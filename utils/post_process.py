@@ -129,7 +129,7 @@ def ctsegm_scale_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, K=100):
     w_h_ = w_h_.view(batch, K, 2)
 
     codes_ = _tranpose_and_gather_feature(codes_, inds)
-    codes_ = codes_.view(batch, K, 64)
+    codes_ = codes_.view(batch, K, -1)
 
     clses = clses.view(batch, K, 1).float()
     scores = scores.view(batch, K, 1)
@@ -141,7 +141,7 @@ def ctsegm_scale_decode(hmap, regs, w_h_, codes_, offsets_, dictionary, K=100):
 
     offsets_ = _tranpose_and_gather_feature(offsets_, inds)
     segms = torch.matmul(codes_, dictionary)
-    segms = segms.view(batch, K, 32, 2) * w_h_.view(batch, K, 1, 2) / 2. + offsets_.view(batch, K, 1, 2) + \
+    segms = segms.view(batch, K, -1, 2) * w_h_.view(batch, K, 1, 2) / 2. + offsets_.view(batch, K, 1, 2) + \
             torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)
     segmentations = torch.cat([segms.view(batch, K, -1), bboxes, scores, clses], dim=2)
 

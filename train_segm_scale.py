@@ -22,7 +22,7 @@ from datasets.coco_segm_scale_new_resample import COCOSEGMCMM, COCO_eval_segm_cm
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
-from nets.resdcn_inmodal_scaled_code import get_pose_resdcn
+from nets.resdcn_inmodal_scaled_code_pre_act import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -305,8 +305,8 @@ def main():
     for epoch in range(1, cfg.num_epochs + 1):
         start = time.time()
         train_sampler.set_epoch(epoch)
-        # train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 1:
+        train(epoch)
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
             stat = val_map(epoch)
             if stat > best_mAP:
                 print('Overall mAP {:.3f} is improving ...'.format(stat))
