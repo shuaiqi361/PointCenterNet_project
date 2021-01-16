@@ -39,10 +39,10 @@ def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0., 
     batch_size, max_obj, n_dims = gt_shapes.size()
     mask = mask[:, :, None].expand_as(gt_shapes).float()
     scale_gt_shapes = torch.zeros(size=(batch_size, max_obj, 4), device=gt_shapes.device)
-    scale_gt_shapes[:, :, 0], _ = torch.min(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 0], dim=-1)
-    scale_gt_shapes[:, :, 1], _ = torch.min(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 1], dim=-1)
-    scale_gt_shapes[:, :, 2], _ = torch.max(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 0], dim=-1)
-    scale_gt_shapes[:, :, 3], _ = torch.max(gt_shapes.view(batch_size, max_obj, 32, 2)[:, :, :, 1], dim=-1)
+    scale_gt_shapes[:, :, 0], _ = torch.min(gt_shapes.view(batch_size, max_obj, -1, 2)[:, :, :, 0], dim=-1)
+    scale_gt_shapes[:, :, 1], _ = torch.min(gt_shapes.view(batch_size, max_obj, -1, 2)[:, :, :, 1], dim=-1)
+    scale_gt_shapes[:, :, 2], _ = torch.max(gt_shapes.view(batch_size, max_obj, -1, 2)[:, :, :, 0], dim=-1)
+    scale_gt_shapes[:, :, 3], _ = torch.max(gt_shapes.view(batch_size, max_obj, -1, 2)[:, :, :, 1], dim=-1)
     scale_norm = torch.sqrt((scale_gt_shapes[:, :, 2] - scale_gt_shapes[:, :, 0]) ** 2 +
                             (scale_gt_shapes[:, :, 3] - scale_gt_shapes[:, :, 1]) ** 2).view(batch_size, max_obj,
                                                                                              1) + 1e-5
@@ -72,9 +72,9 @@ def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask, sparsity=0., 
             F.l1_loss(r * mask, gt_shapes * mask, reduction='none') * 10 / scale_norm) / (mask.sum() + 1e-4) for r in
                        pred_shapes)
 
-    loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
+    # loss_sparsity = sum(torch.sum(torch.abs(r * mask)) / (mask.sum() + 1e-4) for r in pred_codes)
 
-    return loss_cmm + sparsity * loss_sparsity
+    return loss_cmm  # + sparsity * loss_sparsity
 
 
 # def contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, mask):
