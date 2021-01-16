@@ -84,7 +84,7 @@ class KINSSEGMCMM(data.Dataset):
             # add some fields for evaluation
             anno['iscrowd'] = 0
             anno['segmentation'] = anno['a_segm']  # only evaluate amodal segmentation
-            anno['bbox'] = anno['a_bbox']  # only evaluate inmodal detection
+            anno['bbox'] = anno['i_bbox']  # only evaluate inmodal detection
             anno['area'] = anno['a_area']
 
         self.images = self.coco.getImgIds()
@@ -295,7 +295,7 @@ class KINSSEGMCMM(data.Dataset):
 
 
 class KINS_eval_segm_cmm(KINSSEGMCMM):
-    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=31):
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(2,), test_flip=False, fix_size=False, padding=31):
         super(KINS_eval_segm_cmm, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales
@@ -383,11 +383,13 @@ class KINS_eval_segm_cmm(KINSSEGMCMM):
 
         coco_segms = self.coco.loadRes(segments)
         coco_eval_seg = COCOeval(self.coco, coco_segms, "segm")
+        coco_eval_seg.params.catIds = [1, 2, 4, 5, 6, 7, 8]  # not evaluating on label 3 class
         coco_eval_seg.evaluate()
         coco_eval_seg.accumulate()
         coco_eval_seg.summarize()
 
         coco_eval = COCOeval(self.coco, coco_segms, "bbox")
+        coco_eval.params.catIds = [1, 2, 4, 5, 6, 7, 8]
         coco_eval.evaluate()
         coco_eval.accumulate()
         coco_eval.summarize()
