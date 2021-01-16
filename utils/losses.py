@@ -155,9 +155,8 @@ def _reg_loss(regs, gt_regs, mask):
 
 
 def sparse_reg_loss(regs, gt_regs, mask, sparsity=0.01):
-    _, _, len_vec = gt_regs.shape
     mask = mask[:, :, None].expand_as(gt_regs).float().contiguous()
-    loss = sum(F.l1_loss(r * mask, gt_regs * mask, reduction='sum') * len_vec / (mask.sum() + 1e-4) for r in regs)
+    loss = sum(F.l1_loss(r * mask, gt_regs * mask, reduction='sum') * 10 / (mask.sum() + 1e-4) for r in regs)
     sparsity_loss = sum(torch.sum(torch.log(1 + (r * mask) ** 2.)) / (mask.sum() + 1e-4) for r in regs)
     return (loss + sparsity * sparsity_loss) / len(regs)
 
@@ -170,13 +169,14 @@ def _bce_loss(regs, gt_regs, mask):
     return loss / len(regs)
 
 
-def norm_reg_loss(regs, gt_regs, mask):
+def norm_reg_loss(regs, gt_regs, mask, sparsity=0.01):
     _, _, len_vec = gt_regs.shape
     mask = mask[:, :, None].expand_as(gt_regs).float()
     norm_gt_codes = torch.norm(gt_regs, dim=2, keepdim=True) + 1e-4
     loss = sum(torch.sum(F.l1_loss(r * mask, gt_regs * mask, reduction='none') * len_vec / norm_gt_codes) / (
             mask.sum() + 1e-4) for r in regs)
-    return loss / len(regs)
+    sparsity_loss = sum(torch.sum(torch.log(1 + (r * mask) ** 2.)) / (mask.sum() + 1e-4) for r in regs)
+    return (loss + sparsity * sparsity_loss) / len(regs)
 
 
 # def active_reg_loss(regs, gt_regs, mask, active_codes, weights=1.0):

@@ -26,7 +26,7 @@ from nets.resdcn_inmodal_scaled_code_pre_act import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, _bce_loss, active_reg_loss, norm_reg_loss, sparse_reg_loss
+from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss, norm_reg_loss, sparse_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_scale_decode
 
@@ -181,29 +181,29 @@ def main():
             c_3 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_3]
             offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
-            # shapes_1 = [torch.matmul(c, dict_tensor) for c in c_1]
-            # shapes_2 = [torch.matmul(c, dict_tensor) for c in c_2]
-            # shapes_3 = [torch.matmul(c, dict_tensor) for c in c_3]
+            shapes_1 = [torch.matmul(c, dict_tensor) for c in c_1]
+            shapes_2 = [torch.matmul(c, dict_tensor) for c in c_2]
+            shapes_3 = [torch.matmul(c, dict_tensor) for c in c_3]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             # std_loss = _reg_loss(contour_std, batch['std'], batch['ind_masks'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
-            # codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
-            #               + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
-            #               + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
+            codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
+                          + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
+                          + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
 
-            codes_loss = (sparse_reg_loss(c_1, batch['codes'], batch['ind_masks'])
-                          + sparse_reg_loss(c_2, batch['codes'], batch['ind_masks'])
-                          + sparse_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
+            # codes_loss = (sparse_reg_loss(c_1, batch['codes'], batch['ind_masks'])
+            #               + sparse_reg_loss(c_2, batch['codes'], batch['ind_masks'])
+            #               + sparse_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
 
-            # cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
-            #             + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
-            #             + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
+            cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
+                        + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
+                        + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
 
             loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss \
-                   + 0.1 * offsets_loss
+                   + 0.1 * offsets_loss + cfg.cmm_loss_weight * cmm_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -213,9 +213,9 @@ def main():
                 duration = time.perf_counter() - tic
                 tic = time.perf_counter()
                 print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
-                          'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f offsets = %.3f' %
+                          'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f offsets = %.3f cmm = %.3f' %
                           (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(),
-                           offsets_loss.item()) +
+                           offsets_loss.item(), cmm_loss.item()) +
                           ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
 
                 step = len(train_loader) * epoch + batch_idx
@@ -226,7 +226,7 @@ def main():
                 summary_writer.add_scalar('offset_loss', offsets_loss.item(), step)
                 summary_writer.add_scalar('code_loss', codes_loss.item(), step)
                 # summary_writer.add_scalar('std_loss', std_loss.item(), step)
-                # summary_writer.add_scalar('cmm_loss', cmm_loss.item(), step)
+                summary_writer.add_scalar('cmm_loss', cmm_loss.item(), step)
         return
 
     def val_map(epoch):
