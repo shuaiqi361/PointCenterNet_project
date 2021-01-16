@@ -13,7 +13,7 @@ from scipy.signal import resample
 
 from utils.image import get_border, get_affine_transform, affine_transform, color_aug
 from utils.image import draw_umich_gaussian, gaussian_radius
-from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon_using_mask, turning_angle_resample
+from utils.sparse_coding import fast_ista, check_clockwise_polygon, uniformsample
 
 COCO_NAMES = ['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
               'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
@@ -54,7 +54,7 @@ def encode_mask(mask):
 
 
 class COCOSEGMCMM(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=31):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=31, n_coeffs=64, n_vertices=32, sparse_alpha=0.01):
         super(COCOSEGMCMM, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
@@ -84,9 +84,9 @@ class COCOSEGMCMM(data.Dataset):
         self.rand_scales = np.arange(0.6, 1.3, 0.1)
         self.gaussian_iou = 0.7
 
-        self.n_vertices = 32
-        self.n_codes = 64
-        self.sparse_alpha = 0.01
+        self.n_vertices = n_vertices
+        self.n_codes = n_coeffs
+        self.sparse_alpha = sparse_alpha
 
         print('==> initializing coco 2017 %s data.' % split)
         self.coco = coco.COCO(self.annot_path)
@@ -115,20 +115,24 @@ class COCOSEGMCMM(data.Dataset):
         shapes = []
 
         for anno in annotations:
-            if anno['iscrowd'] == 1:  # Excludes crowd objects
+            if anno['iscrowd'] == 1 or type(anno['segmentation']) != list:  # Excludes crowd objects
                 continue
 
-            polygons = get_connected_polygon_using_mask(anno['segmentation'], (h_img, w_img),
-                                                        n_vertices=self.n_vertices, closing_max_kernel=50)
+            if len(anno['segmentation']) > 1:
+                obj_contours = [np.array(s).reshape((-1, 2)).astype(np.int32) for s in anno['segmentation']]
+                obj_contours = sorted(obj_contours, key=cv2.contourArea)
+                polygons = obj_contours[-1]
+            else:
+                polygons = anno['segmentation'][0]
 
             gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
 
             # Downsample the contour to fix number of vertices
-            if len(contour) > self.n_vertices:
-                fixed_contour = resample(contour, num=self.n_vertices)
-            else:
-                fixed_contour = turning_angle_resample(contour, self.n_vertices)
+            if cv2.contourArea(contour.astype(np.int32)) < 6:
+                continue
+
+            fixed_contour = uniformsample(contour, self.n_vertices)
 
             fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
             fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
@@ -174,22 +178,6 @@ class COCOSEGMCMM(data.Dataset):
 
         trans_img = get_affine_transform(center, scale, 0, [self.img_size['w'], self.img_size['h']])
         img = cv2.warpAffine(img, trans_img, (self.img_size['w'], self.img_size['h']))
-
-        # -----------------------------------debug---------------------------------
-        # image_show = img.copy()
-        # for bbox, label in zip(bboxes, labels):
-        #   if flipped:
-        #     bbox[[0, 2]] = width - bbox[[2, 0]] - 1
-        #   bbox[:2] = affine_transform(bbox[:2], trans_img)
-        #   bbox[2:] = affine_transform(bbox[2:], trans_img)
-        #   bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
-        #   bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
-        #   cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
-        #   cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
-        #               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        # cv2.imshow('img', image_show)
-        # cv2.waitKey()
-        # -----------------------------------debug---------------------------------
 
         img = img.astype(np.float32) / 255.
 
