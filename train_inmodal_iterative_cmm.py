@@ -28,7 +28,7 @@ from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
 from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss, norm_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
-from utils.post_process import ctsegm_amodal_cmm_decode, ctsegm_shift_code_decode
+from utils.post_process import ctsegm_inmodal_code_decode
 
 # Training settings
 parser = argparse.ArgumentParser(description='inmodal_cmm')
@@ -176,9 +176,9 @@ def main():
             c_3 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_3]
             offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
-            shapes_1 = [torch.matmul(c, dict_tensor) for c in c_1]
-            shapes_2 = [torch.matmul(c, dict_tensor) for c in c_2]
-            shapes_3 = [torch.matmul(c, dict_tensor) for c in c_3]
+            # shapes_1 = [torch.matmul(c, dict_tensor) for c in c_1]
+            # shapes_2 = [torch.matmul(c, dict_tensor) for c in c_2]
+            # shapes_3 = [torch.matmul(c, dict_tensor) for c in c_3]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             # occ_loss = _neg_loss(occ_map, batch['occ_map'], ex=4.0)
@@ -189,14 +189,16 @@ def main():
                           + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
                           + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
 
-            cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
-                        + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
-                        + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
+            # cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
+            #             + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
+            #             + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
             # cmm_loss = (_reg_loss(shapes_1, batch['shapes'], batch['ind_masks'])
             #             + _reg_loss(shapes_2, batch['shapes'], batch['ind_masks'])
             #             + _reg_loss(shapes_3, batch['shapes'], batch['ind_masks'])) / 3.
 
-            loss = 1. * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
+            # loss = 1. * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.cmm_loss_weight * cmm_loss \
+            #        + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
+            loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss \
                    + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
 
             optimizer.zero_grad()
@@ -207,8 +209,8 @@ def main():
                 duration = time.perf_counter() - tic
                 tic = time.perf_counter()
                 print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
-                          'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f cmm = %.3f offsets = %.3f' %
-                          (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(), cmm_loss.item(),
+                          'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f offsets = %.3f' %
+                          (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(),
                            offsets_loss.item()) +
                           ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
 
@@ -219,7 +221,7 @@ def main():
                 summary_writer.add_scalar('w_h_loss', w_h_loss.item(), step)
                 summary_writer.add_scalar('offset_loss', offsets_loss.item(), step)
                 summary_writer.add_scalar('code_loss', codes_loss.item(), step)
-                summary_writer.add_scalar('cmm_loss', cmm_loss.item(), step)
+                # summary_writer.add_scalar('cmm_loss', cmm_loss.item(), step)
         return
 
     def val_map(epoch):
@@ -248,9 +250,9 @@ def main():
                     # hmap, regs, w_h_, _, _, codes = model(inputs[scale]['image'])[-1]
                     output = [hmap, regs, w_h_, codes, offsets]
 
-                    segms = ctsegm_amodal_cmm_decode(*output,
-                                                     torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
-                                                     K=cfg.test_topk)
+                    segms = ctsegm_inmodal_code_decode(*output,
+                                                       torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
+                                                       K=cfg.test_topk)
                     # segms = ctsegm_shift_code_decode(*output,
                     #                                  torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
                     #                                  K=cfg.test_topk)
