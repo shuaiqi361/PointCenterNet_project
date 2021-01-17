@@ -226,6 +226,8 @@ class PoseResNet(nn.Module):
         fill_fc_weights(self.regs)
         fill_fc_weights(self.w_h_)
         fill_fc_weights(self.occ)
+        fill_fc_weights(self.inmodal_conv)
+        fill_fc_weights(self.amodal_conv)
         fill_fc_weights(self.offsets)
         fill_fc_weights(self.codes_1)
         fill_fc_weights(self.codes_2)
@@ -321,7 +323,7 @@ class PoseResNet(nn.Module):
         xc_2 = self.compress_2(self.codes_2(xc_1) + xc_1)
         xc_3 = self.compress_3(self.codes_3(xc_2) + xc_2)
 
-        out = [[self.hmap(in_cls), self.regs(inmodal_x), self.w_h_(inmodal_x), xc_1, xc_2, xc_3, offsets]]
+        out = [[self.hmap(inmodal_x), self.regs(inmodal_x), self.w_h_(inmodal_x), xc_1, xc_2, xc_3, offsets]]
         return out
 
     def init_weights(self, num_layers):
