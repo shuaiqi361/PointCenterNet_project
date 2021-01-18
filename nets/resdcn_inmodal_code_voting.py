@@ -165,14 +165,13 @@ class PoseResNet(nn.Module):
 
             # -------- inmodal features and heads
             # spatial aggregation layer and voting layers
-            self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[1, 6, 12, 18],
-                                                                   padding=[1, 6, 12, 18])
+            self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[1, 4, 8, 12],
+                                                                   padding=[1, 4, 8, 12])
             self.occ_voting = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                             nn.ReLU(inplace=True),
                                             nn.Conv2d(head_conv, self.num_votes, kernel_size=1, bias=True))
             self.voting_conv_pre = nn.Sequential(nn.ReLU(inplace=True),
-                                                 nn.Conv2d(self.num_votes, head_conv, kernel_size=3, padding=1,
-                                                           bias=True),
+                                                 nn.Conv2d(self.num_votes, head_conv, kernel_size=3, padding=1, bias=True),
                                                  nn.ReLU(inplace=True),
                                                  nn.Conv2d(head_conv, self.num_classes, kernel_size=1, bias=True))
             self.voting_conv_aft = nn.Sequential(

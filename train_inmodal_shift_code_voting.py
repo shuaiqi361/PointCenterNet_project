@@ -129,7 +129,9 @@ def main():
 
     Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else KINS_eval_segm_cmm
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
-                               'val', test_scales=[1.], test_flip=False, padding=cfg.padding)
+                               'val', test_scales=[1.], test_flip=False, padding=cfg.padding,
+                               n_coeffs=cfg.n_codes, n_vertices=cfg.n_vertices,
+                               sparse_alpha=cfg.sparse_alpha, vote_len=cfg.n_votes)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
                                              shuffle=False, num_workers=1, pin_memory=False,
                                              collate_fn=val_dataset.collate_fn)
@@ -141,7 +143,7 @@ def main():
                      dictionary=torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device))
     elif 'resdcn' in cfg.arch:
         model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64,
-                                num_classes=train_dataset.num_classes)
+                                num_classes=train_dataset.num_classes, num_codes=cfg.n_codes, num_votes=cfg.votes)
     else:
         raise NotImplementedError
 
