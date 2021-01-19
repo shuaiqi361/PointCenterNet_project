@@ -3,7 +3,7 @@ import math
 import torch.nn as nn
 from nets.deform_conv import DCN
 import torch.utils.model_zoo as model_zoo
-from nets.spatial_aggregation_conv import SpatialAggregationModule
+from nets.spatial_aggregation_conv_large import SpatialAggregationModule
 
 BN_MOMENTUM = 0.1
 model_urls = {'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -103,8 +103,8 @@ def fill_fc_weights(layers):
     for m in layers.modules():
         if isinstance(m, nn.Conv2d):
             # nn.init.normal_(m.weight, std=0.001)
-            nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
-            # nn.init.xavier_normal_(m.weight.data)
+            # nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
+            nn.init.xavier_normal_(m.weight.data)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
@@ -165,8 +165,8 @@ class PoseResNet(nn.Module):
 
             # -------- inmodal features and heads
             # spatial aggregation layer and voting layers
-            self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[1, 4, 8, 12],
-                                                                   padding=[1, 4, 8, 12])
+            self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[6, 12, 18],
+                                                                   padding=[6, 12, 18])
             self.occ_voting = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                             nn.ReLU(inplace=True),
                                             nn.Conv2d(head_conv, self.num_votes, kernel_size=1, bias=True))
