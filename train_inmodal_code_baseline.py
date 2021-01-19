@@ -101,8 +101,9 @@ def main():
 
     print_log('Setting up data...')
     cfg.dictionary_file = os.path.join(cfg.dictionary_folder,
-                                       'train_dict_v{}_n{}_a{:.2f}.npy'.format(cfg.n_vertices, cfg.codes,
+                                       'train_dict_v{}_n{}_a{:.2f}.npy'.format(cfg.n_vertices, cfg.n_codes,
                                                                                cfg.sparse_alpha))
+    print_log('Loading the dictionary: ' + cfg.dictionary_file)
     dictionary = np.load(cfg.dictionary_file)
     if 'hourglass' in cfg.arch:
         cfg.padding = 127
@@ -141,7 +142,7 @@ def main():
                      dictionary=torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device))
     elif 'resdcn' in cfg.arch:
         model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64,
-                                num_classes=train_dataset.num_classes, num_codes=cfg.n_codes, num_votes=cfg.votes)
+                                num_classes=train_dataset.num_classes, num_codes=cfg.n_codes)
     else:
         raise NotImplementedError
 

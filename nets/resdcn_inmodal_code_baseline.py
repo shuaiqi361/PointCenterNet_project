@@ -110,12 +110,11 @@ def fill_fc_weights(layers):
 
 
 class PoseResNet(nn.Module):
-    def __init__(self, block, layers, head_conv, num_classes=7, num_codes=64, num_votes=64):
+    def __init__(self, block, layers, head_conv, num_classes=7, num_codes=64):
         self.inplanes = 64
         self.deconv_with_bias = False
         self.num_classes = num_classes
         self.num_codes = num_codes
-        self.num_votes = num_votes
 
         super(PoseResNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -191,14 +190,14 @@ class PoseResNet(nn.Module):
             self.codes_2 = nn.Sequential(nn.ReLU(inplace=True),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
                                          nn.ReLU(inplace=True),
-                                         nn.conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                         nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
             self.codes_3 = nn.Sequential(nn.ReLU(inplace=True),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
                                          nn.ReLU(inplace=True),
-                                         nn.conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                         nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
@@ -331,8 +330,8 @@ resnet_spec = {18: (BasicBlock, [2, 2, 2, 2]),
                152: (Bottleneck, [3, 8, 36, 3])}
 
 
-def get_pose_resdcn(num_layers, head_conv=64, num_classes=80, num_codes=64, num_votes=64):
+def get_pose_resdcn(num_layers, head_conv=64, num_classes=80, num_codes=64):
     block_class, layers = resnet_spec[num_layers]
-    model = PoseResNet(block_class, layers, head_conv, num_classes, num_codes=num_codes, num_votes=num_votes)
+    model = PoseResNet(block_class, layers, head_conv, num_classes, num_codes=num_codes)
     model.init_weights(num_layers)
     return model
