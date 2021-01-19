@@ -106,6 +106,7 @@ def main():
                                        'train_dict_v{}_n{}_a{:.2f}.npy'.format(cfg.n_vertices, cfg.codes,
                                                                                cfg.sparse_alpha))
     dictionary = np.load(cfg.dictionary_file)
+    print_log('Loading the dictionary: ' + cfg.dictionary_file)
     if 'hourglass' in cfg.arch:
         cfg.padding = 127
     else:
@@ -129,7 +130,7 @@ def main():
 
     Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else KINS_eval_segm_cmm
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
-                               'val', test_scales=[1.], test_flip=False, padding=cfg.padding,
+                               'val', test_scales=[1.], test_flip=False, img_size=cfg.img_size, padding=cfg.padding,
                                n_coeffs=cfg.n_codes, n_vertices=cfg.n_vertices,
                                sparse_alpha=cfg.sparse_alpha, vote_len=cfg.n_votes)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
@@ -162,7 +163,7 @@ def main():
         torch.cuda.empty_cache()
 
     optimizer = torch.optim.Adam(model.parameters(), cfg.lr)
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=0.1)
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.lr_step, gamma=cfg.gamma)
 
     def train(epoch):
         print_log('\n Epoch: %d' % epoch)
@@ -197,7 +198,7 @@ def main():
                           + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.)) / 3.
 
             loss = 1. * hmap_loss + 1. * reg_loss + 0.1 * w_h_loss + 0.1 * offsets_loss + \
-                   cfg.bce_loss_weight * vote_loss + cfg.code_loss_weight * codes_loss
+                   cfg.vote_loss_weight * vote_loss + cfg.code_loss_weight * codes_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -219,7 +220,6 @@ def main():
                 summary_writer.add_scalar('w_h_loss', w_h_loss.item(), step)
                 summary_writer.add_scalar('offset_loss', offsets_loss.item(), step)
                 summary_writer.add_scalar('code_loss', codes_loss.item(), step)
-                # summary_writer.add_scalar('cmm_loss', cmm_loss.item(), step)
         return
 
     def val_map(epoch):

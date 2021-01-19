@@ -279,8 +279,11 @@ class COCOSEGMCMM(data.Dataset):
 
 
 class COCO_eval_segm_cmm(COCOSEGMCMM):
-    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=31):
-        super(COCO_eval_segm_cmm, self).__init__(data_dir, dictionary_file, split, padding)
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False,
+                 img_size=(512, 512), padding=31, n_coeffs=64, n_vertices=32, sparse_alpha=0.01, vote_len=64):
+        super(COCO_eval_segm_cmm, self).__init__(data_dir, dictionary_file, split, img_size=img_size,
+                                                 padding=padding, n_coeffs=n_coeffs,
+                                                 n_vertices=n_vertices, sparse_alpha=sparse_alpha, vote_len=vote_len)
         self.test_flip = test_flip
         self.test_scales = test_scales
         self.fix_size = fix_size

@@ -191,14 +191,14 @@ class PoseResNet(nn.Module):
             self.codes_2 = nn.Sequential(nn.ReLU(inplace=True),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
                                          nn.ReLU(inplace=True),
-                                         nn.conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                         nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
             self.codes_3 = nn.Sequential(nn.ReLU(inplace=True),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
                                          nn.ReLU(inplace=True),
-                                         nn.conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                         nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
