@@ -137,17 +137,17 @@ class COCOSEGMCMM(data.Dataset):
             else:
                 polygons = anno['segmentation'][0]
 
-            # gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
+            gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
 
             # Downsample the contour to fix number of vertices
-            if cv2.contourArea(contour.astype(np.int32)) < 6:
+            if cv2.contourArea(contour.astype(np.int32)) < 12:
                 continue
 
             fixed_contour = uniformsample(contour, self.n_vertices)
 
-            # fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
-            # fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
+            fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
+            fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
 
             updated_bbox = [np.min(fixed_contour[:, 0]), np.min(fixed_contour[:, 1]),
                             np.max(fixed_contour[:, 0]), np.max(fixed_contour[:, 1])]
