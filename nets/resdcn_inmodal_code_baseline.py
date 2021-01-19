@@ -167,17 +167,17 @@ class PoseResNet(nn.Module):
             # spatial aggregation layer and voting layers
             self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[1, 4, 8, 12],
                                                                    padding=[1, 4, 8, 12])
-            self.occ_voting = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                            nn.ReLU(inplace=True),
-                                            nn.Conv2d(head_conv, self.num_votes, kernel_size=1, bias=True))
-            self.voting_conv_pre = nn.Sequential(nn.ReLU(inplace=True),
-                                                 nn.Conv2d(self.num_votes, head_conv, kernel_size=3, padding=1, bias=True),
-                                                 nn.ReLU(inplace=True),
-                                                 nn.Conv2d(head_conv, self.num_classes, kernel_size=1, bias=True))
-            self.voting_conv_aft = nn.Sequential(
-                nn.Conv2d(self.num_classes, self.num_classes, kernel_size=3, padding=1, bias=True),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(self.num_classes, self.num_classes, kernel_size=1, bias=True))
+            # self.occ_voting = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+            #                                 nn.ReLU(inplace=True),
+            #                                 nn.Conv2d(head_conv, self.num_votes, kernel_size=1, bias=True))
+            # self.voting_conv_pre = nn.Sequential(nn.ReLU(inplace=True),
+            #                                      nn.Conv2d(self.num_votes, head_conv, kernel_size=3, padding=1, bias=True),
+            #                                      nn.ReLU(inplace=True),
+            #                                      nn.Conv2d(head_conv, self.num_classes, kernel_size=1, bias=True))
+            # self.voting_conv_aft = nn.Sequential(
+            #     nn.Conv2d(self.num_classes, self.num_classes, kernel_size=3, padding=1, bias=True),
+            #     nn.ReLU(inplace=True),
+            #     nn.Conv2d(self.num_classes, self.num_classes, kernel_size=1, bias=True))
 
             # mass center offsets and codes
             self.offsets = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
@@ -205,9 +205,9 @@ class PoseResNet(nn.Module):
         fill_fc_weights(self.regs)
         fill_fc_weights(self.w_h_)
         fill_fc_weights(self.spatial_aggregate_conv)
-        fill_fc_weights(self.voting_conv_aft)
-        fill_fc_weights(self.voting_conv_pre)
-        fill_fc_weights(self.occ_voting)
+        # fill_fc_weights(self.voting_conv_aft)
+        # fill_fc_weights(self.voting_conv_pre)
+        # fill_fc_weights(self.occ_voting)
 
         fill_fc_weights(self.inmodal_conv)
         fill_fc_weights(self.amodal_conv)
@@ -302,14 +302,14 @@ class PoseResNet(nn.Module):
 
         # amodal feature outputs
         offsets = self.offsets(sp_occ_feat)
-        votes = self.occ_voting(sp_occ_feat)
-        voted_heatmap = self.voting_conv_aft(self.voting_conv_pre(votes) * inmodal_heatmap)
+        # votes = self.occ_voting(sp_occ_feat)
+        # voted_heatmap = self.voting_conv_aft(self.voting_conv_pre(votes) * inmodal_heatmap)
 
         xc_1 = self.codes_1(sp_occ_feat)
         xc_2 = self.codes_2(xc_1) + xc_1
         xc_3 = self.codes_3(xc_2) + xc_2
 
-        out = [[voted_heatmap, regs, w_h_bbox, xc_1, xc_2, xc_3, offsets, votes]]
+        out = [[inmodal_heatmap, regs, w_h_bbox, xc_1, xc_2, xc_3, offsets]]
         return out
 
     def init_weights(self, num_layers):
