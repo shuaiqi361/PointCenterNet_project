@@ -39,7 +39,7 @@ class SpatialAggregationModule(nn.Module):
                                 nn.BatchNorm2d(inplanes),
                                 nn.ReLU(inplace=True))
 
-        self.conv_aft = nn.Sequential(nn.Conv2d(inplanes, inplanes, kernel_size=1, padding=0, bias=False),
+        self.conv_aft = nn.Sequential(nn.Conv2d(inplanes * 4, inplanes, kernel_size=1, padding=0, bias=False),
                                       nn.BatchNorm2d(inplanes),
                                       nn.ReLU(inplace=True),
                                       nn.Conv2d(inplanes, inplanes, kernel_size=3, padding=1, bias=False),
@@ -51,7 +51,8 @@ class SpatialAggregationModule(nn.Module):
         d2 = self.d2(x)
         d3 = self.d3(x)
 
-        out = x + d1 + d2 + d3
+        # out = x + d1 + d2 + d3
+        out = torch.cat([x, d1, d2, d3], dim=1)
         out = self.conv_aft(out)
 
         return out

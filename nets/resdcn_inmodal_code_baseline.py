@@ -187,14 +187,14 @@ class PoseResNet(nn.Module):
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
-            self.codes_2 = nn.Sequential(nn.ReLU(inplace=True),
+            self.codes_2 = nn.Sequential(nn.ReLU(),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
-            self.codes_3 = nn.Sequential(nn.ReLU(inplace=True),
+            self.codes_3 = nn.Sequential(nn.ReLU(),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
@@ -295,12 +295,12 @@ class PoseResNet(nn.Module):
         sp_occ_feat = self.spatial_aggregate_conv(amodal_x + inmodal_x)
 
         # inmodal feature outputs
-        inmodal_heatmap = self.hmap(inmodal_x)
+        heatmap = self.hmap(sp_occ_feat)
         regs = self.regs(inmodal_x)
         w_h_bbox = self.w_h_(inmodal_x)
 
         # amodal feature outputs
-        offsets = self.offsets(sp_occ_feat)
+        offsets = self.offsets(inmodal_x)
         # votes = self.occ_voting(sp_occ_feat)
         # voted_heatmap = self.voting_conv_aft(self.voting_conv_pre(votes) * inmodal_heatmap)
 
@@ -308,7 +308,7 @@ class PoseResNet(nn.Module):
         xc_2 = self.codes_2(xc_1) + xc_1
         xc_3 = self.codes_3(xc_2) + xc_2
 
-        out = [[inmodal_heatmap, regs, w_h_bbox, xc_1, xc_2, xc_3, offsets]]
+        out = [[heatmap, regs, w_h_bbox, xc_1, xc_2, xc_3, offsets]]
         return out
 
     def init_weights(self, num_layers):
