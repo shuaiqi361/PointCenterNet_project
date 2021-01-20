@@ -166,6 +166,8 @@ def main():
     def train(epoch):
         print_log('\n Epoch: %d' % epoch)
         model.train()
+        # torch.autograd.set_detect_anomaly(mode=True)
+
         tic = time.perf_counter()
         for batch_idx, batch in enumerate(train_loader):
             for k in batch:
