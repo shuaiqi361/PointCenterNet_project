@@ -3,12 +3,13 @@ import torch.nn as nn
 
 
 class SpatialAggregationModule(nn.Module):
-    def __init__(self, inplanes, planes, stride=1, dilation=[4, 8, 12], padding=[4, 8, 12]):
+    def __init__(self, inplanes, planes, stride=1, dilation=[4, 8, 12], padding=[4, 8, 12], residual=True):
         super(SpatialAggregationModule, self).__init__()
         self.stride = stride
         self.padding = padding  # padding should be the same as dilation, so the output plane is the same as input
         self.dilation = dilation
         self.n_path = len(dilation)
+        self.residual = residual
         self.d1 = nn.Sequential(nn.Conv2d(inplanes, planes, kernel_size=1, padding=0, bias=False),
                                 nn.BatchNorm2d(planes),
                                 nn.ReLU(inplace=True),
@@ -55,4 +56,7 @@ class SpatialAggregationModule(nn.Module):
         out = torch.cat([x, d1, d2, d3], dim=1)
         out = self.conv_aft(out)
 
-        return out
+        if self.residual:
+            return x + out
+        else:
+            return out

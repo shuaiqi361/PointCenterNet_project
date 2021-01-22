@@ -26,7 +26,7 @@ from nets.resdcn_inmodal_code_voting import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss, norm_reg_loss, _bce_loss
+from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, _bce_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_inmodal_code_decode
 
@@ -174,8 +174,8 @@ def main():
                 if k != 'meta':
                     batch[k] = batch[k].to(device=cfg.device, non_blocking=True)
 
-            dict_tensor = torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True)
-            dict_tensor.requires_grad = False
+            # dict_tensor = torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True)
+            # dict_tensor.requires_grad = False
 
             outputs = model(batch['image'])
             hmap, regs, w_h_, codes_1, codes_2, codes_3, offsets, votes = zip(*outputs)

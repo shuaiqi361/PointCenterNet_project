@@ -103,14 +103,14 @@ def fill_fc_weights(layers):
     for m in layers.modules():
         if isinstance(m, nn.Conv2d):
             # nn.init.normal_(m.weight, std=0.001)
-            # nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
-            nn.init.xavier_normal_(m.weight.data)
+            nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
+            # nn.init.xavier_normal_(m.weight.data)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
 
 class PoseResNet(nn.Module):
-    def __init__(self, block, layers, head_conv, num_classes=7, num_codes=64, num_votes=64):
+    def __init__(self, block, layers, head_conv, num_classes=7, num_codes=64, num_votes=121):
         self.inplanes = 64
         self.deconv_with_bias = False
         self.num_classes = num_classes
@@ -166,7 +166,7 @@ class PoseResNet(nn.Module):
             # -------- inmodal features and heads
             # spatial aggregation layer and voting layers
             self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[6, 12, 18],
-                                                                   padding=[6, 12, 18])
+                                                                   padding=[6, 12, 18], residual=True)
             self.occ_voting = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                             nn.ReLU(inplace=True),
                                             nn.Conv2d(head_conv, self.num_votes, kernel_size=1, bias=True))
@@ -188,14 +188,14 @@ class PoseResNet(nn.Module):
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
-            self.codes_2 = nn.Sequential(nn.ReLU(inplace=True),
+            self.codes_2 = nn.Sequential(nn.ReLU(inplace=False),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
-            self.codes_3 = nn.Sequential(nn.ReLU(inplace=True),
+            self.codes_3 = nn.Sequential(nn.ReLU(inplace=False),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
