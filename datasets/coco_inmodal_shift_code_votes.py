@@ -146,8 +146,8 @@ class COCOSEGMCMM(data.Dataset):
 
             fixed_contour = uniformsample(contour, self.n_vertices)
 
-            # fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
-            # fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
+            fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
+            fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
 
             updated_bbox = [np.min(fixed_contour[:, 0]), np.min(fixed_contour[:, 1]),
                             np.max(fixed_contour[:, 0]), np.max(fixed_contour[:, 1])]
@@ -260,11 +260,14 @@ class COCOSEGMCMM(data.Dataset):
                                          lmbda=self.sparse_alpha, max_iter=60)
                 activated_codes[k] = (np.abs(codes_[k]) > 1e-4) * 1  # active codes annotated 1
 
-                shifted_poly = indexed_shape - np.array([bbox[0], bbox[1]])  # crop to the bbox
-                obj_mask = polys_to_mask([np.ndarray.flatten(shifted_poly, order='C').tolist()], bbox[3], bbox[2]) * 255.
+                shifted_poly = indexed_shape - np.array([bbox[0], bbox[1]]) + 1  # crop to the bbox
+                obj_mask = polys_to_mask([np.ndarray.flatten(shifted_poly, order='C').tolist()], h + 2, w + 2) * 255
+                # obj_mask = np.zeros(shape=(int(bbox[3]), int(bbox[2])), dtype=np.uint8)
+                # cv2.drawContours(obj_mask, shifted_poly[None, :, :].astype(np.int32), color=255, contourIdx=-1, thickness=-1)
                 obj_mask = cv2.resize(obj_mask.astype(np.uint8), dsize=(self.vote_vec_dim, self.vote_vec_dim),
                                       interpolation=cv2.INTER_LINEAR) * 1.
                 votes_[k] = obj_mask.reshape((1, -1)) / 255.
+                # print('max val: {:.4f}, min val: {:.4f}'.format(np.max(votes_[k]), np.min(votes_[k])))
 
                 w_h_[k] = 1. * w, 1. * h
                 regs[k] = obj_c - obj_c_int  # discretization error
