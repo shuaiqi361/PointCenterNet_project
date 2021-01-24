@@ -179,6 +179,7 @@ class exkp(nn.Module):
 
                 outs.append([self.hmap[ind](inmodal_cnv), self.regs[ind](inmodal_cnv), self.w_h_[ind](inmodal_cnv),
                              code_out, offsets_out])
+                
 
             if ind < self.nstack - 1:
                 inter = self.inters_[ind](inter) + self.cnvs_[ind](cnv)
