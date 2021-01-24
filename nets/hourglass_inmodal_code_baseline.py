@@ -141,7 +141,8 @@ class exkp(nn.Module):
         self.fusion = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim // 2, kernel_size=1, padding=0, bias=False),
                                     nn.BatchNorm2d(cnv_dim // 2),
                                     nn.ReLU(inplace=True),
-                                    nn.Conv2d(cnv_dim // 2, cnv_dim // 2, kernel_size=3, padding=6, dilation=6, bias=False),
+                                    nn.Conv2d(cnv_dim // 2, cnv_dim // 2, kernel_size=3, padding=6, dilation=6,
+                                              bias=False),
                                     nn.BatchNorm2d(cnv_dim // 2),
                                     nn.ReLU(inplace=True),
                                     nn.Conv2d(cnv_dim // 2, cnv_dim, kernel_size=1, padding=0, bias=False),
@@ -151,11 +152,11 @@ class exkp(nn.Module):
         for hmap in self.hmap:
             hmap[-1].bias.data.fill_(-2.19)
 
-        # regression layers
+        # regression layers from inmodal features
         self.regs = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 2) for _ in range(nstack)])
         self.w_h_ = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 2) for _ in range(nstack)])
 
-        # codes layers
+        # codes layers from amodal features
         self.codes_ = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 64) for _ in range(nstack)])
         self.offsets = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 2) for _ in range(nstack)])
 
@@ -163,7 +164,6 @@ class exkp(nn.Module):
 
     def forward(self, image):
         inter = self.pre(image)
-        bs = image.size(0)
 
         outs = []
         for ind in range(self.nstack):
@@ -179,7 +179,6 @@ class exkp(nn.Module):
 
                 outs.append([self.hmap[ind](inmodal_cnv), self.regs[ind](inmodal_cnv), self.w_h_[ind](inmodal_cnv),
                              code_out, offsets_out])
-                
 
             if ind < self.nstack - 1:
                 inter = self.inters_[ind](inter) + self.cnvs_[ind](cnv)
