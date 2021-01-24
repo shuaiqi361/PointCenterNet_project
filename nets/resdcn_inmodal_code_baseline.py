@@ -103,8 +103,8 @@ def fill_fc_weights(layers):
     for m in layers.modules():
         if isinstance(m, nn.Conv2d):
             # nn.init.normal_(m.weight, std=0.001)
-            # nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
-            nn.init.xavier_normal_(m.weight.data)
+            nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
+            # nn.init.xavier_normal_(m.weight.data)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
