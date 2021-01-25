@@ -128,24 +128,30 @@ class PoseResNet(nn.Module):
 
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(3, [256, 128, 64], [4, 4, 4])
-        self.amodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv * 2, kernel_size=1, bias=False),
-                                         nn.BatchNorm2d(head_conv * 2),
-                                         nn.ReLU(inplace=True),
-                                         nn.Conv2d(head_conv * 2, head_conv * 2, kernel_size=3, padding=1, bias=False),
-                                         nn.BatchNorm2d(head_conv * 2),
-                                         nn.ReLU(inplace=True),
-                                         nn.Conv2d(head_conv * 2, head_conv, kernel_size=1, bias=False),
+        self.amodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=False),
                                          nn.BatchNorm2d(head_conv),
                                          nn.ReLU(inplace=True))
-        self.inmodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv * 2, kernel_size=1, bias=False),
-                                          nn.BatchNorm2d(head_conv * 2),
-                                          nn.ReLU(inplace=True),
-                                          nn.Conv2d(head_conv * 2, head_conv * 2, kernel_size=3, padding=1, bias=False),
-                                          nn.BatchNorm2d(head_conv * 2),
-                                          nn.ReLU(inplace=True),
-                                          nn.Conv2d(head_conv * 2, head_conv, kernel_size=1, bias=False),
+        self.inmodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=False),
                                           nn.BatchNorm2d(head_conv),
                                           nn.ReLU(inplace=True))
+        # self.amodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv * 2, kernel_size=1, bias=False),
+        #                                  nn.BatchNorm2d(head_conv * 2),
+        #                                  nn.ReLU(inplace=True),
+        #                                  nn.Conv2d(head_conv * 2, head_conv * 2, kernel_size=3, padding=1, bias=False),
+        #                                  nn.BatchNorm2d(head_conv * 2),
+        #                                  nn.ReLU(inplace=True),
+        #                                  nn.Conv2d(head_conv * 2, head_conv, kernel_size=1, bias=False),
+        #                                  nn.BatchNorm2d(head_conv),
+        #                                  nn.ReLU(inplace=True))
+        # self.inmodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv * 2, kernel_size=1, bias=False),
+        #                                   nn.BatchNorm2d(head_conv * 2),
+        #                                   nn.ReLU(inplace=True),
+        #                                   nn.Conv2d(head_conv * 2, head_conv * 2, kernel_size=3, padding=1, bias=False),
+        #                                   nn.BatchNorm2d(head_conv * 2),
+        #                                   nn.ReLU(inplace=True),
+        #                                   nn.Conv2d(head_conv * 2, head_conv, kernel_size=1, bias=False),
+        #                                   nn.BatchNorm2d(head_conv),
+        #                                   nn.ReLU(inplace=True))
 
         if head_conv > 0:
             # ------- inmodal features and heads
@@ -165,7 +171,7 @@ class PoseResNet(nn.Module):
             # -------- inmodal features and heads
             # spatial aggregation layer and voting layers
             self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[6, 12, 18],
-                                                                   padding=[6, 12, 18])
+                                                                   padding=[6, 12, 18], residual=True)
             # self.occ_voting = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
             #                                 nn.ReLU(inplace=True),
             #                                 nn.Conv2d(head_conv, self.num_votes, kernel_size=1, bias=True))
@@ -184,22 +190,22 @@ class PoseResNet(nn.Module):
                                          nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
 
             self.codes_1 = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                         nn.ReLU(inplace=True),
+                                         nn.Tanh(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
-            self.codes_2 = nn.Sequential(nn.ReLU(),
+            self.codes_2 = nn.Sequential(nn.Tanh(inplace=False),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
-                                         nn.ReLU(inplace=True),
+                                         nn.Tanh(inplace=True),
                                          nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                         nn.ReLU(inplace=True),
+                                         nn.Tanh(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
-            self.codes_3 = nn.Sequential(nn.ReLU(),
-                                         nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
-                                         nn.ReLU(inplace=True),
-                                         nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                         nn.ReLU(inplace=True),
-                                         nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
+            # self.codes_3 = nn.Sequential(nn.Tanh(inplace=False),
+            #                              nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
+            #                              nn.Tanh(inplace=True),
+            #                              nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+            #                              nn.Tanh(inplace=True),
+            #                              nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
         fill_fc_weights(self.regs)
         fill_fc_weights(self.w_h_)
@@ -213,7 +219,7 @@ class PoseResNet(nn.Module):
         fill_fc_weights(self.offsets)
         fill_fc_weights(self.codes_1)
         fill_fc_weights(self.codes_2)
-        fill_fc_weights(self.codes_3)
+        # fill_fc_weights(self.codes_3)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -306,9 +312,9 @@ class PoseResNet(nn.Module):
 
         xc_1 = self.codes_1(sp_occ_feat)
         xc_2 = self.codes_2(xc_1) + xc_1
-        xc_3 = self.codes_3(xc_2) + xc_2
+        # xc_3 = self.codes_3(xc_2) + xc_2
 
-        out = [[heatmap, regs, w_h_bbox, xc_1, xc_2, xc_3, offsets]]
+        out = [[heatmap, regs, w_h_bbox, xc_1, xc_2, offsets]]
         return out
 
     def init_weights(self, num_layers):
