@@ -170,8 +170,8 @@ class PoseResNet(nn.Module):
 
             # -------- inmodal features and heads
             # spatial aggregation layer and voting layers
-            self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[6, 12, 18],
-                                                                   padding=[6, 12, 18], residual=True)
+            self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[4, 8, 12],
+                                                                   padding=[4, 8, 12], residual=True)
             # self.occ_voting = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
             #                                 nn.ReLU(inplace=True),
             #                                 nn.Conv2d(head_conv, self.num_votes, kernel_size=1, bias=True))
@@ -190,14 +190,14 @@ class PoseResNet(nn.Module):
                                          nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
 
             self.codes_1 = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                         nn.Tanh(inplace=True),
+                                         nn.Tanh(),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
-            self.codes_2 = nn.Sequential(nn.Tanh(inplace=False),
+            self.codes_2 = nn.Sequential(nn.Tanh(),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
-                                         nn.Tanh(inplace=True),
+                                         nn.Tanh(),
                                          nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                         nn.Tanh(inplace=True),
+                                         nn.Tanh(),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
             # self.codes_3 = nn.Sequential(nn.Tanh(inplace=False),
