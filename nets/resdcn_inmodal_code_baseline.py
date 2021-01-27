@@ -103,8 +103,8 @@ def fill_fc_weights(layers):
     for m in layers.modules():
         if isinstance(m, nn.Conv2d):
             # nn.init.normal_(m.weight, std=0.001)
-            nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
-            # nn.init.xavier_normal_(m.weight.data)
+            # nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
+            nn.init.xavier_normal_(m.weight.data)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
@@ -128,30 +128,30 @@ class PoseResNet(nn.Module):
 
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(3, [256, 128, 64], [4, 4, 4])
-        self.amodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=False),
-                                         nn.BatchNorm2d(head_conv),
-                                         nn.ReLU(inplace=True))
-        self.inmodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=False),
-                                          nn.BatchNorm2d(head_conv),
-                                          nn.ReLU(inplace=True))
-        # self.amodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv * 2, kernel_size=1, bias=False),
-        #                                  nn.BatchNorm2d(head_conv * 2),
-        #                                  nn.ReLU(inplace=True),
-        #                                  nn.Conv2d(head_conv * 2, head_conv * 2, kernel_size=3, padding=1, bias=False),
-        #                                  nn.BatchNorm2d(head_conv * 2),
-        #                                  nn.ReLU(inplace=True),
-        #                                  nn.Conv2d(head_conv * 2, head_conv, kernel_size=1, bias=False),
+        # self.amodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=False),
         #                                  nn.BatchNorm2d(head_conv),
         #                                  nn.ReLU(inplace=True))
-        # self.inmodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv * 2, kernel_size=1, bias=False),
-        #                                   nn.BatchNorm2d(head_conv * 2),
-        #                                   nn.ReLU(inplace=True),
-        #                                   nn.Conv2d(head_conv * 2, head_conv * 2, kernel_size=3, padding=1, bias=False),
-        #                                   nn.BatchNorm2d(head_conv * 2),
-        #                                   nn.ReLU(inplace=True),
-        #                                   nn.Conv2d(head_conv * 2, head_conv, kernel_size=1, bias=False),
+        # self.inmodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=False),
         #                                   nn.BatchNorm2d(head_conv),
         #                                   nn.ReLU(inplace=True))
+        self.amodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv * 2, kernel_size=1, bias=False),
+                                         nn.BatchNorm2d(head_conv * 2),
+                                         nn.ReLU(inplace=True),
+                                         nn.Conv2d(head_conv * 2, head_conv * 2, kernel_size=3, padding=1, bias=False),
+                                         nn.BatchNorm2d(head_conv * 2),
+                                         nn.ReLU(inplace=True),
+                                         nn.Conv2d(head_conv * 2, head_conv, kernel_size=1, bias=False),
+                                         nn.BatchNorm2d(head_conv),
+                                         nn.ReLU(inplace=True))
+        self.inmodal_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv * 2, kernel_size=1, bias=False),
+                                          nn.BatchNorm2d(head_conv * 2),
+                                          nn.ReLU(inplace=True),
+                                          nn.Conv2d(head_conv * 2, head_conv * 2, kernel_size=3, padding=1, bias=False),
+                                          nn.BatchNorm2d(head_conv * 2),
+                                          nn.ReLU(inplace=True),
+                                          nn.Conv2d(head_conv * 2, head_conv, kernel_size=1, bias=False),
+                                          nn.BatchNorm2d(head_conv),
+                                          nn.ReLU(inplace=True))
 
         if head_conv > 0:
             # ------- inmodal features and heads
@@ -190,14 +190,14 @@ class PoseResNet(nn.Module):
                                          nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
 
             self.codes_1 = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                         nn.Tanh(),
+                                         nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
-            self.codes_2 = nn.Sequential(nn.Tanh(),
+            self.codes_2 = nn.Sequential(nn.ReLU(inplace=False),
                                          nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
-                                         nn.Tanh(),
+                                         nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                         nn.Tanh(),
+                                         nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
             # self.codes_3 = nn.Sequential(nn.Tanh(inplace=False),
@@ -301,12 +301,12 @@ class PoseResNet(nn.Module):
         sp_occ_feat = self.spatial_aggregate_conv(amodal_x + inmodal_x)
 
         # inmodal feature outputs
-        heatmap = self.hmap(sp_occ_feat)
+        heatmap = self.hmap(inmodal_x)
         regs = self.regs(inmodal_x)
         w_h_bbox = self.w_h_(inmodal_x)
 
         # amodal feature outputs
-        offsets = self.offsets(inmodal_x)
+        offsets = self.offsets(sp_occ_feat)
         # votes = self.occ_voting(sp_occ_feat)
         # voted_heatmap = self.voting_conv_aft(self.voting_conv_pre(votes) * inmodal_heatmap)
 
