@@ -128,8 +128,8 @@ def main():
 
     Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else KINS_eval_segm_cmm
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
-                               'val', test_scales=[1.], test_flip=False, img_size=cfg.img_size, padding=cfg.padding,
-                               n_coeffs=cfg.n_codes, n_vertices=cfg.n_vertices,
+                               'val', test_scales=[1.], test_flip=False, img_size=(640, 640), padding=cfg.padding,
+                               n_coeffs=cfg.n_codes, n_vertices=cfg.n_vertices, fix_size=True,
                                sparse_alpha=cfg.sparse_alpha)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
                                              shuffle=False, num_workers=1, pin_memory=False,
