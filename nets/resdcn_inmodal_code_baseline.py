@@ -298,7 +298,7 @@ class PoseResNet(nn.Module):
         x = self.deconv_layers(x)
         amodal_x = self.amodal_conv(x)
         inmodal_x = self.inmodal_conv(x)
-        sp_occ_feat = self.spatial_aggregate_conv(amodal_x + inmodal_x)
+        sp_occ_feat = self.spatial_aggregate_conv(amodal_x)
 
         # inmodal feature outputs
         heatmap = self.hmap(inmodal_x)

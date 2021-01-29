@@ -26,7 +26,7 @@ from nets.resdcn_inmodal_code_baseline import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, norm_reg_loss
+from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, adapt_norm_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_inmodal_code_decode
 
@@ -128,8 +128,8 @@ def main():
 
     Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else KINS_eval_segm_cmm
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
-                               'val', test_scales=[1.], test_flip=False, img_size=(640, 640), padding=cfg.padding,
-                               n_coeffs=cfg.n_codes, n_vertices=cfg.n_vertices, fix_size=True,
+                               'val', test_scales=[1.], test_flip=False, img_size=cfg.img_size, padding=cfg.padding,
+                               n_coeffs=cfg.n_codes, n_vertices=cfg.n_vertices, fix_size=False,
                                sparse_alpha=cfg.sparse_alpha)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
                                              shuffle=False, num_workers=1, pin_memory=False,
@@ -194,8 +194,10 @@ def main():
             # codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
             #               + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)
             #               + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.)) / 3.
-            codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
-                          + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)) / 2.
+            # codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
+            #               + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)) / 2.
+            codes_loss = (adapt_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
+                          + adapt_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)) / 2.
 
             loss = 1. * hmap_loss + 1. * reg_loss + 0.1 * w_h_loss + 0.1 * offsets_loss + \
                    cfg.code_loss_weight * codes_loss
