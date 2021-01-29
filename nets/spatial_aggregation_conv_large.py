@@ -46,6 +46,9 @@ class SpatialAggregationModule(nn.Module):
                                       nn.Conv2d(inplanes, inplanes, kernel_size=3, padding=1, bias=False),
                                       nn.BatchNorm2d(inplanes),
                                       nn.ReLU(inplace=True))
+        self.residual_conv = nn.Sequential(nn.Conv2d(inplanes, inplanes, kernel_size=3, padding=1, bias=False),
+                                      nn.BatchNorm2d(inplanes),
+                                      nn.ReLU(inplace=True))
 
     def forward(self, x):
         d1 = self.d1(x)
@@ -57,6 +60,6 @@ class SpatialAggregationModule(nn.Module):
         out = self.conv_aft(out)
 
         if self.residual:
-            return x + out
+            return self.residual_conv(x + out)
         else:
             return out
