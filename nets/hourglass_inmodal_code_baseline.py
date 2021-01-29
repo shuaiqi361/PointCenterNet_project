@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+from nets.spatial_aggregation_conv_large import SpatialAggregationModule
 
 
 class convolution(nn.Module):
@@ -104,15 +105,12 @@ class kp_module(nn.Module):
 
 
 class exkp(nn.Module):
-    def __init__(self, n, nstack, dims, modules, dictionary=None, cnv_dim=256, num_classes=80):
+    def __init__(self, n, nstack, dims, modules, cnv_dim=256, num_classes=80, n_codes=64):
         super(exkp, self).__init__()
 
         self.nstack = nstack
         self.num_classes = num_classes
-        if dictionary is None:
-            self.dictionary = Variable(torch.ones(64, 64), requires_grad=True)
-        else:
-            self.dictionary = Variable(dictionary, requires_grad=False)
+        self.n_codes = n_codes
 
         curr_dim = dims[0]
 
@@ -132,22 +130,42 @@ class exkp(nn.Module):
                                                   nn.BatchNorm2d(curr_dim))
                                     for _ in range(nstack - 1)])
         # heatmap layers
-        self.amodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim, kernel_size=3, padding=1, bias=False),
+        # self.amodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim, kernel_size=3, padding=1, bias=False),
+        #                                  nn.BatchNorm2d(cnv_dim),
+        #                                  nn.ReLU(inplace=True))
+        # self.inmodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim, kernel_size=3, padding=1, bias=False),
+        #                                   nn.BatchNorm2d(cnv_dim),
+        #                                   nn.ReLU(inplace=True))
+        self.amodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim * 2, kernel_size=1, bias=False),
+                                         nn.BatchNorm2d(cnv_dim * 2),
+                                         nn.ReLU(inplace=True),
+                                         nn.Conv2d(cnv_dim * 2, cnv_dim * 2, kernel_size=3, padding=1, bias=False),
+                                         nn.BatchNorm2d(cnv_dim * 2),
+                                         nn.ReLU(inplace=True),
+                                         nn.Conv2d(cnv_dim * 2, cnv_dim, kernel_size=1, bias=False),
                                          nn.BatchNorm2d(cnv_dim),
                                          nn.ReLU(inplace=True))
-        self.inmodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim, kernel_size=3, padding=1, bias=False),
+        self.inmodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim * 2, kernel_size=1, bias=False),
+                                          nn.BatchNorm2d(cnv_dim * 2),
+                                          nn.ReLU(inplace=True),
+                                          nn.Conv2d(cnv_dim * 2, cnv_dim * 2, kernel_size=3, padding=1, bias=False),
+                                          nn.BatchNorm2d(cnv_dim * 2),
+                                          nn.ReLU(inplace=True),
+                                          nn.Conv2d(cnv_dim * 2, cnv_dim, kernel_size=1, bias=False),
                                           nn.BatchNorm2d(cnv_dim),
                                           nn.ReLU(inplace=True))
-        self.fusion = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim // 2, kernel_size=1, padding=0, bias=False),
-                                    nn.BatchNorm2d(cnv_dim // 2),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(cnv_dim // 2, cnv_dim // 2, kernel_size=3, padding=6, dilation=6,
-                                              bias=False),
-                                    nn.BatchNorm2d(cnv_dim // 2),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(cnv_dim // 2, cnv_dim, kernel_size=1, padding=0, bias=False),
-                                    nn.BatchNorm2d(cnv_dim),
-                                    nn.ReLU(inplace=True))
+        self.spatial_aggregate_conv = SpatialAggregationModule(cnv_dim, cnv_dim // 2, dilation=[4, 8, 12],
+                                                               padding=[4, 8, 12], residual=True)
+        # self.fusion = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim // 2, kernel_size=1, padding=0, bias=False),
+        #                             nn.BatchNorm2d(cnv_dim // 2),
+        #                             nn.ReLU(inplace=True),
+        #                             nn.Conv2d(cnv_dim // 2, cnv_dim // 2, kernel_size=3, padding=6, dilation=6,
+        #                                       bias=False),
+        #                             nn.BatchNorm2d(cnv_dim // 2),
+        #                             nn.ReLU(inplace=True),
+        #                             nn.Conv2d(cnv_dim // 2, cnv_dim, kernel_size=1, padding=0, bias=False),
+        #                             nn.BatchNorm2d(cnv_dim),
+        #                             nn.ReLU(inplace=True))
         self.hmap = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, num_classes) for _ in range(nstack)])
         for hmap in self.hmap:
             hmap[-1].bias.data.fill_(-2.19)
@@ -157,7 +175,8 @@ class exkp(nn.Module):
         self.w_h_ = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 2) for _ in range(nstack)])
 
         # codes layers from amodal features
-        self.codes_ = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 64) for _ in range(nstack)])
+        self.codes_1 = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, self.n_codes) for _ in range(nstack)])
+        self.codes_2 = nn.ModuleList([make_kp_layer(self.n_codes, curr_dim, self.n_codes) for _ in range(nstack)])
         self.offsets = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 2) for _ in range(nstack)])
 
         self.relu = nn.ReLU(inplace=True)
@@ -173,12 +192,13 @@ class exkp(nn.Module):
             if self.training or ind == self.nstack - 1:
                 amodal_cnv = self.amodal_conv(cnv)
                 inmodal_cnv = self.inmodal_conv(cnv)
-                fused_feat = self.fusion(inmodal_cnv + amodal_cnv) + inmodal_cnv + amodal_cnv
-                code_out = self.codes_[ind](fused_feat)
+                fused_feat = self.spatial_aggregate_conv(amodal_cnv)
+                code_out_1 = self.codes_1[ind](fused_feat)
+                code_out_2 = self.codes_2[ind](code_out_1) + code_out_1
                 offsets_out = self.offsets[ind](fused_feat)
 
                 outs.append([self.hmap[ind](inmodal_cnv), self.regs[ind](inmodal_cnv), self.w_h_[ind](inmodal_cnv),
-                             code_out, offsets_out])
+                             code_out_1, code_out_2, offsets_out])
 
             if ind < self.nstack - 1:
                 inter = self.inters_[ind](inter) + self.cnvs_[ind](cnv)
@@ -189,9 +209,9 @@ class exkp(nn.Module):
 
 get_hourglass = \
     {'large_hourglass':
-         exkp(n=5, nstack=2, dims=[256, 256, 384, 384, 384, 512], modules=[2, 2, 2, 2, 2, 4], dictionary=None),
+         exkp(n=5, nstack=2, dims=[256, 256, 384, 384, 384, 512], modules=[2, 2, 2, 2, 2, 4], n_codes=64),
      'small_hourglass':
-         exkp(n=5, nstack=1, dims=[256, 256, 384, 384, 384, 512], modules=[2, 2, 2, 2, 2, 4], dictionary=None)}
+         exkp(n=5, nstack=1, dims=[256, 256, 384, 384, 384, 512], modules=[2, 2, 2, 2, 2, 4], n_codes=64)}
 
 if __name__ == '__main__':
     from collections import OrderedDict

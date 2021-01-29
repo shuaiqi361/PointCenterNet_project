@@ -21,7 +21,7 @@ import torch.distributed as dist
 from datasets.coco_inmodal_code_baseline import COCOSEGMCMM, COCO_eval_segm_cmm
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
-from nets.hourglass_segm_cmm import get_hourglass, exkp
+from nets.hourglass_inmodal_code_baseline import exkp
 from nets.resdcn_inmodal_code_baseline import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
@@ -138,8 +138,7 @@ def main():
     print_log('Creating model...')
     if 'hourglass' in cfg.arch:
         model = exkp(n=5, nstack=2, dims=[256, 256, 384, 384, 384, 512],
-                     modules=[2, 2, 2, 2, 2, 4],
-                     dictionary=torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device))
+                     modules=[2, 2, 2, 2, 2, 4], n_codes=cfg.n_codes)
     elif 'resdcn' in cfg.arch:
         model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64,
                                 num_classes=train_dataset.num_classes, num_codes=cfg.n_codes)
