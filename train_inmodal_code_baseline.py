@@ -26,7 +26,7 @@ from nets.resdcn_inmodal_code_baseline import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, adapt_norm_reg_loss
+from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, adapt_norm_reg_loss, wing_norm_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_inmodal_code_decode
 
@@ -56,6 +56,7 @@ parser.add_argument('--code_loss_weight', type=float, default=1)
 parser.add_argument('--lr', type=float, default=5e-4)
 parser.add_argument('--lr_step', type=str, default='90,120')
 parser.add_argument('--gamma', type=float, default=0.1)
+parser.add_argument('--code_loss', type=str, default='norm')
 parser.add_argument('--batch_size', type=int, default=48)
 parser.add_argument('--num_epochs', type=int, default=140)
 
@@ -194,10 +195,19 @@ def main():
             # codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
             #               + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)
             #               + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.)) / 3.
-            # codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
-            #               + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)) / 2.
-            codes_loss = (adapt_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
-                          + adapt_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)) / 2.
+
+            if cfg.code_loss == 'norm':
+                codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
+                              + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)) / 2.
+            elif cfg.code_loss == 'adapt':
+                codes_loss = (adapt_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
+                              + adapt_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)) / 2.
+            elif cfg.code_loss == 'wing':
+                codes_loss = (wing_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
+                              + wing_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)) / 2.
+            else:
+                print('Loss type for code not implemented yet.')
+                raise NotImplementedError
 
             loss = 1. * hmap_loss + 1. * reg_loss + 0.1 * w_h_loss + 0.1 * offsets_loss + \
                    cfg.code_loss_weight * codes_loss

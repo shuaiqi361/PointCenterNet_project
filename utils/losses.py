@@ -179,7 +179,7 @@ def norm_reg_loss(regs, gt_regs, mask, sparsity=0.01):
     return (loss + sparsity * sparsity_loss) / len(regs)
 
 
-def adapt_norm_reg_loss(regs, gt_regs, mask, sparsity=0.):
+def adapt_norm_reg_loss(regs, gt_regs, mask, sparsity=0.01):
     _, _, len_vec = gt_regs.shape
     mask = mask[:, :, None].expand_as(gt_regs).float()
     norm_gt_codes = torch.sqrt(torch.clamp(torch.abs(gt_regs), min=1.0))
@@ -187,6 +187,20 @@ def adapt_norm_reg_loss(regs, gt_regs, mask, sparsity=0.):
             mask.sum() + 1e-4) for r in regs)
     sparsity_loss = sum(torch.sum(torch.log(1 + (r * mask) ** 2.)) / (mask.sum() + 1e-4) for r in regs)
     return (loss + sparsity * sparsity_loss) / len(regs)
+
+
+def wing_norm_reg_loss(regs, gt_regs, mask, sparsity=0.01):
+    _, _, len_vec = gt_regs.shape
+    mask = mask[:, :, None].expand_as(gt_regs).float()
+    norm_gt_codes = torch.norm(gt_regs, dim=2, keepdim=True) + 1e-4
+    loss = sum(torch.sum(wing_function(r * mask, gt_regs * mask, epsilon=2.0) * len_vec / norm_gt_codes) / (
+            mask.sum() + 1e-4) for r in regs)
+    sparsity_loss = sum(torch.sum(torch.log(1 + (r * mask) ** 2.)) / (mask.sum() + 1e-4) for r in regs)
+    return (loss + sparsity * sparsity_loss) / len(regs)
+
+
+def wing_function(abs_val, epsilon=4.):
+    return torch.log(1 + abs_val / epsilon)
 
 # def active_reg_loss(regs, gt_regs, mask, active_codes, weights=1.0):
 #     _, _, len_vec = gt_regs.shape
@@ -215,13 +229,16 @@ def active_reg_loss(regs, gt_regs, mask, active_codes, weights=1.0):
     inact_norm_gt_codes = torch.norm(gt_regs * inactive_codes, dim=2, keepdim=True) + 1e-4
 
     loss_active = sum(torch.sum(
-        F.l1_loss(r * mask * active_codes, gt_regs * mask * active_codes, reduction='none') * len_vec / act_norm_gt_codes) / (
+        F.l1_loss(r * mask * active_codes, gt_regs * mask * active_codes,
+                  reduction='none') * len_vec / act_norm_gt_codes) / (
                               mask.sum() + 1e-4) for r in regs)
     loss_inactive = sum(
-        torch.sum(F.l1_loss(r * mask * inactive_codes, gt_regs * mask * inactive_codes, reduction='none') * len_vec / inact_norm_gt_codes) / (
+        torch.sum(F.l1_loss(r * mask * inactive_codes, gt_regs * mask * inactive_codes,
+                            reduction='none') * len_vec / inact_norm_gt_codes) / (
                 mask.sum() + 1e-4) for r in regs)
 
     return (loss_active + weights * loss_inactive) / len(regs)
+
 
 # def active_reg_loss(regs, gt_regs, mask, active_codes, weights=1.0):
 #     _, _, len_vec = gt_regs.shape
