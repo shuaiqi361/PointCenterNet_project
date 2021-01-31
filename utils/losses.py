@@ -198,7 +198,7 @@ def wing_norm_reg_loss(regs, gt_regs, mask, sparsity=0.01):
     #         mask.sum() + 1e-4) for r in regs)
     # loss = sum(torch.sum(wing_function(r * mask, gt_regs * mask, epsilon=1.0)) / (
     #         mask.sum() + 1e-4) for r in regs)
-    loss = sum(torch.sum(wing_loss_func(r * mask, gt_regs * mask, omega=4.0, epsilon=0.5) * len_vec / norm_gt_codes) / (
+    loss = sum(torch.sum(wing_loss_func(r * mask, gt_regs * mask, omega=4.0, epsilon=0.5)) / (
             mask.sum() + 1e-4) for r in regs)
     sparsity_loss = sum(torch.sum(torch.log(1 + (r * mask) ** 2.)) / (mask.sum() + 1e-4) for r in regs)
     return (loss + sparsity * sparsity_loss) / len(regs)
@@ -210,16 +210,16 @@ def wing_function(pred, gt, epsilon=1.):
 
 
 def wing_loss_func(pred, target, omega=5.0, epsilon=2.0):
-    y = target
-    y_hat = pred
-    delta_y = (y - y_hat).abs()
+    delta_y = torch.abs(pred - target)
     delta_y1 = delta_y[delta_y < omega]
     delta_y2 = delta_y[delta_y >= omega]
     loss1 = omega * torch.log(1 + delta_y1 / epsilon)
     C = omega - omega * math.log(1 + omega / epsilon)
     loss2 = delta_y2 - C
+    # print(pred.size(), target.size(), loss1.size(), loss2.size())
 
-    return loss1 + loss2
+    return loss1.sum() + loss2.sum()
+
 
 # def active_reg_loss(regs, gt_regs, mask, active_codes, weights=1.0):
 #     _, _, len_vec = gt_regs.shape
