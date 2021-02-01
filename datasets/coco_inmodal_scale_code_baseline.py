@@ -13,8 +13,7 @@ from scipy.signal import resample
 
 from utils.image import get_border, get_affine_transform, affine_transform, color_aug
 from utils.image import draw_umich_gaussian, gaussian_radius
-from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon_using_mask, \
-    turning_angle_resample
+from utils.sparse_coding import fast_ista, check_clockwise_polygon, uniformsample
 
 COCO_NAMES = ['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
               'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
@@ -118,20 +117,24 @@ class COCOSEGMCMM(data.Dataset):
         shapes = []
 
         for anno in annotations:
-            if anno['iscrowd'] == 1:  # Excludes crowd objects
+            if anno['iscrowd'] == 1 or type(anno['segmentation']) != list:  # Excludes crowd objects
                 continue
 
-            polygons = get_connected_polygon_using_mask(anno['segmentation'], (h_img, w_img),
-                                                        n_vertices=self.n_vertices, closing_max_kernel=50)
+            if len(anno['segmentation']) > 1:
+                obj_contours = [np.array(s).reshape((-1, 2)).astype(np.int32) for s in anno['segmentation']]
+                obj_contours = sorted(obj_contours, key=cv2.contourArea)
+                polygons = obj_contours[-1]
+            else:
+                polygons = anno['segmentation'][0]
 
             gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
 
             # Downsample the contour to fix number of vertices
-            if len(contour) > self.n_vertices:
-                fixed_contour = resample(contour, num=self.n_vertices)
-            else:
-                fixed_contour = turning_angle_resample(contour, self.n_vertices)
+            if cv2.contourArea(contour.astype(np.int32)) < 6:
+                continue
+
+            fixed_contour = uniformsample(contour, self.n_vertices)
 
             fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
             fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)

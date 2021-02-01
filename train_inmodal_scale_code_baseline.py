@@ -18,11 +18,11 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
-from datasets.coco_segm_scale_new_resample import COCOSEGMCMM, COCO_eval_segm_cmm
+from datasets.coco_inmodal_scale_code_baseline import COCOSEGMCMM, COCO_eval_segm_cmm
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
-from nets.resdcn_inmodal_scaled_code_pre_act import get_pose_resdcn
+from nets.resdcn_inmodal_scale_code_baseline import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -41,7 +41,7 @@ parser.add_argument('--root_dir', type=str, default='./')
 parser.add_argument('--data_dir', type=str, default='./data')
 parser.add_argument('--log_name', type=str, default='test')
 parser.add_argument('--pretrain_checkpoint', type=str)
-parser.add_argument('--dictionary_file', type=str)
+parser.add_argument('--dictionary_folder', type=str)
 # parser.add_argument('--code_stat_file', type=str)
 
 parser.add_argument('--dataset', type=str, default='coco', choices=['coco', 'pascal', 'kins'])
@@ -56,6 +56,7 @@ parser.add_argument('--cmm_loss_weight', type=float, default=1)
 parser.add_argument('--code_loss_weight', type=float, default=1)
 parser.add_argument('--active_weight', type=float, default=1)
 parser.add_argument('--bce_loss_weight', type=float, default=1)
+parser.add_argument('--code_loss', type=str, default='wing')
 parser.add_argument('--adapt_norm', type=str, default='sqrt')
 parser.add_argument('--wing_epsilon', type=float, default=1.0)
 parser.add_argument('--wing_omega', type=float, default=1.0)
@@ -113,7 +114,10 @@ def main():
                                                                                       cfg.sparse_alpha))
     print_log('Loading the dictionary: ' + cfg.dictionary_file)
     dictionary = np.load(cfg.dictionary_file)
-
+    if 'hourglass' in cfg.arch:
+        cfg.padding = 127
+    else:
+        cfg.padding = 31
     Dataset = COCOSEGMCMM if cfg.dataset == 'coco' else KINSSEGMCMM
     train_dataset = Dataset(cfg.data_dir, cfg.dictionary_file,
                             'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size, padding=cfg.padding,
