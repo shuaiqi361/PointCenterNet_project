@@ -18,17 +18,17 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
-from datasets.coco_inmodal_code_baseline import COCOSEGMCMM, COCO_eval_segm_cmm
+from datasets.coco_segm_scale_new_resample import COCOSEGMCMM, COCO_eval_segm_cmm
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
-from nets.hourglass_inmodal_code_baseline import exkp
-from nets.resdcn_inmodal_code_baseline import get_pose_resdcn
+from nets.hourglass_segm_cmm import get_hourglass, exkp
+from nets.resdcn_inmodal_scaled_code_pre_act import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
 from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, adapt_norm_reg_loss, wing_norm_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
-from utils.post_process import ctsegm_inmodal_code_decode
+from utils.post_process import ctsegm_scale_decode
 
 # Training settings
 parser = argparse.ArgumentParser(description='inmodal_cmm')
@@ -41,7 +41,8 @@ parser.add_argument('--root_dir', type=str, default='./')
 parser.add_argument('--data_dir', type=str, default='./data')
 parser.add_argument('--log_name', type=str, default='test')
 parser.add_argument('--pretrain_checkpoint', type=str)
-parser.add_argument('--dictionary_folder', type=str)
+parser.add_argument('--dictionary_file', type=str)
+# parser.add_argument('--code_stat_file', type=str)
 
 parser.add_argument('--dataset', type=str, default='coco', choices=['coco', 'pascal', 'kins'])
 parser.add_argument('--arch', type=str, default='resdcn_50')
@@ -51,7 +52,10 @@ parser.add_argument('--split_ratio', type=float, default=1.0)
 parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
 parser.add_argument('--sparse_alpha', type=float, default=0.01)
+parser.add_argument('--cmm_loss_weight', type=float, default=1)
 parser.add_argument('--code_loss_weight', type=float, default=1)
+parser.add_argument('--active_weight', type=float, default=1)
+parser.add_argument('--bce_loss_weight', type=float, default=1)
 parser.add_argument('--adapt_norm', type=str, default='sqrt')
 parser.add_argument('--wing_epsilon', type=float, default=1.0)
 parser.add_argument('--wing_omega', type=float, default=1.0)
@@ -59,11 +63,11 @@ parser.add_argument('--wing_omega', type=float, default=1.0)
 parser.add_argument('--lr', type=float, default=5e-4)
 parser.add_argument('--lr_step', type=str, default='90,120')
 parser.add_argument('--gamma', type=float, default=0.1)
-parser.add_argument('--code_loss', type=str, default='norm')
 parser.add_argument('--batch_size', type=int, default=48)
 parser.add_argument('--num_epochs', type=int, default=140)
 
 parser.add_argument('--test_topk', type=int, default=100)
+
 parser.add_argument('--log_interval', type=int, default=100)
 parser.add_argument('--val_interval', type=int, default=5)
 parser.add_argument('--num_workers', type=int, default=2)
@@ -105,14 +109,11 @@ def main():
 
     print_log('Setting up data...')
     cfg.dictionary_file = os.path.join(cfg.dictionary_folder,
-                                       'train_dict_v{}_n{}_a{:.2f}.npy'.format(cfg.n_vertices, cfg.n_codes,
-                                                                               cfg.sparse_alpha))
+                                       'train_scaled_dict_v{}_n{}_a{:.2f}.npy'.format(cfg.n_vertices, cfg.n_codes,
+                                                                                      cfg.sparse_alpha))
     print_log('Loading the dictionary: ' + cfg.dictionary_file)
     dictionary = np.load(cfg.dictionary_file)
-    if 'hourglass' in cfg.arch:
-        cfg.padding = 127
-    else:
-        cfg.padding = 31
+
     Dataset = COCOSEGMCMM if cfg.dataset == 'coco' else KINSSEGMCMM
     train_dataset = Dataset(cfg.data_dir, cfg.dictionary_file,
                             'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size, padding=cfg.padding,
@@ -141,8 +142,10 @@ def main():
 
     print_log('Creating model...')
     if 'hourglass' in cfg.arch:
+        # model = get_hourglass[cfg.arch]
         model = exkp(n=5, nstack=2, dims=[256, 256, 384, 384, 384, 512],
-                     modules=[2, 2, 2, 2, 2, 4], n_codes=cfg.n_codes)
+                     modules=[2, 2, 2, 2, 2, 4],
+                     dictionary=torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device))
     elif 'resdcn' in cfg.arch:
         model = get_pose_resdcn(num_layers=int(cfg.arch.split('_')[-1]), head_conv=64,
                                 num_classes=train_dataset.num_classes, num_codes=cfg.n_codes)
@@ -169,8 +172,6 @@ def main():
     def train(epoch):
         print_log('\n Epoch: %d' % epoch)
         model.train()
-        # torch.autograd.set_detect_anomaly(mode=True)
-
         tic = time.perf_counter()
         for batch_idx, batch in enumerate(train_loader):
             for k in batch:
@@ -181,23 +182,17 @@ def main():
             dict_tensor.requires_grad = False
 
             outputs = model(batch['image'])
-            # hmap, regs, w_h_, codes_1, codes_2, codes_3, offsets = zip(*outputs)
             hmap, regs, w_h_, codes, offsets = zip(*outputs)
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
             codes = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes]
-            # c_2 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_2]
-            # c_3 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_3]
             offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
-            # codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.)
-            #               + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.)
-            #               + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.)) / 3.
 
             if cfg.code_loss == 'norm':
                 codes_loss = norm_reg_loss(codes, batch['codes'], batch['ind_masks'], sparsity=0.)
@@ -211,8 +206,7 @@ def main():
                 print('Loss type for code not implemented yet.')
                 raise NotImplementedError
 
-            loss = 1. * hmap_loss + 1. * reg_loss + 0.1 * w_h_loss + 0.1 * offsets_loss + \
-                   cfg.code_loss_weight * codes_loss
+            loss = hmap_loss + reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -233,6 +227,7 @@ def main():
                 summary_writer.add_scalar('w_h_loss', w_h_loss.item(), step)
                 summary_writer.add_scalar('offset_loss', offsets_loss.item(), step)
                 summary_writer.add_scalar('code_loss', codes_loss.item(), step)
+
         return
 
     def val_map(epoch):
@@ -250,17 +245,14 @@ def main():
                 segmentations = []
                 for scale in inputs:
                     inputs[scale]['image'] = inputs[scale]['image'].to(cfg.device)
-                    # dict_tensor = torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True)
-                    # dict_tensor.requires_grad = False
 
-                    # hmap, regs, w_h_, _, _, codes, offsets = model(inputs[scale]['image'])[-1]
                     hmap, regs, w_h_, codes, offsets = model(inputs[scale]['image'])[-1]
+
                     output = [hmap, regs, w_h_, codes, offsets]
 
-                    segms = ctsegm_inmodal_code_decode(*output,
-                                                       torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
-                                                       K=cfg.test_topk)
-
+                    segms = ctsegm_scale_decode(*output,
+                                                torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
+                                                K=cfg.test_topk)
                     segms = segms.detach().cpu().numpy().reshape(1, -1, segms.shape[2])[0]
 
                     top_preds = {}

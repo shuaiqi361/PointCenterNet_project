@@ -110,7 +110,7 @@ def fill_fc_weights(layers):
 
 
 class PoseResNet(nn.Module):
-    def __init__(self, block, layers, head_conv, num_classes=7, num_codes=64):
+    def __init__(self, block, layers, head_conv, num_classes=80, num_codes=64):
         self.inplanes = 64
         self.deconv_with_bias = False
         self.num_classes = num_classes
@@ -166,17 +166,6 @@ class PoseResNet(nn.Module):
             # spatial aggregation layer and voting layers
             self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[4, 8, 12],
                                                                    padding=[4, 8, 12], residual=True)
-            # self.occ_voting = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-            #                                 nn.ReLU(inplace=True),
-            #                                 nn.Conv2d(head_conv, self.num_votes, kernel_size=1, bias=True))
-            # self.voting_conv_pre = nn.Sequential(nn.ReLU(inplace=True),
-            #                                      nn.Conv2d(self.num_votes, head_conv, kernel_size=3, padding=1, bias=True),
-            #                                      nn.ReLU(inplace=True),
-            #                                      nn.Conv2d(head_conv, self.num_classes, kernel_size=1, bias=True))
-            # self.voting_conv_aft = nn.Sequential(
-            #     nn.Conv2d(self.num_classes, self.num_classes, kernel_size=3, padding=1, bias=True),
-            #     nn.ReLU(inplace=True),
-            #     nn.Conv2d(self.num_classes, self.num_classes, kernel_size=1, bias=True))
 
             # mass center offsets and codes
             self.offsets = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
@@ -184,35 +173,17 @@ class PoseResNet(nn.Module):
                                          nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
 
             self.codes = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                         nn.ReLU(inplace=True),
-                                         nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
-
-            # self.codes_2 = nn.Sequential(nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
-            #                              nn.ReLU(inplace=True),
-            #                              nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-            #                              nn.ReLU(inplace=True),
-            #                              nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
-
-            # self.codes_3 = nn.Sequential(nn.Tanh(inplace=False),
-            #                              nn.Conv2d(self.num_codes, head_conv, kernel_size=1, padding=0, bias=True),
-            #                              nn.Tanh(inplace=True),
-            #                              nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-            #                              nn.Tanh(inplace=True),
-            #                              nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
+                                       nn.ReLU(inplace=True),
+                                       nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
         fill_fc_weights(self.regs)
         fill_fc_weights(self.w_h_)
         fill_fc_weights(self.spatial_aggregate_conv)
-        # fill_fc_weights(self.voting_conv_aft)
-        # fill_fc_weights(self.voting_conv_pre)
-        # fill_fc_weights(self.occ_voting)
 
         fill_fc_weights(self.inmodal_conv)
         fill_fc_weights(self.amodal_conv)
         fill_fc_weights(self.offsets)
         fill_fc_weights(self.codes)
-        # fill_fc_weights(self.codes_2)
-        # fill_fc_weights(self.codes_3)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -300,15 +271,9 @@ class PoseResNet(nn.Module):
 
         # amodal feature outputs
         offsets = self.offsets(sp_occ_feat)
-        # votes = self.occ_voting(sp_occ_feat)
-        # voted_heatmap = self.voting_conv_aft(self.voting_conv_pre(votes) * inmodal_heatmap)
+        xc = self.codes(sp_occ_feat)
 
-        xc_1 = self.codes(sp_occ_feat)
-        # xc_2 = self.codes_2(xc_1) + xc_1
-        # xc_3 = self.codes_3(xc_2) + xc_2
-
-        out = [[heatmap, regs, w_h_bbox, xc_1, offsets]]
-        return out
+        return [[heatmap, regs, w_h_bbox, xc, offsets]]
 
     def init_weights(self, num_layers):
         url = model_urls['resnet{}'.format(num_layers)]

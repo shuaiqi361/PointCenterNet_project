@@ -42,9 +42,6 @@ class SpatialAggregationModule(nn.Module):
 
         self.conv_aft = nn.Sequential(nn.Conv2d(inplanes * 4, inplanes, kernel_size=1, padding=0, bias=False),
                                       nn.BatchNorm2d(inplanes),
-                                      nn.ReLU(inplace=True),
-                                      nn.Conv2d(inplanes, inplanes, kernel_size=3, padding=1, bias=False),
-                                      nn.BatchNorm2d(inplanes),
                                       nn.ReLU(inplace=True))
         self.residual_conv = nn.Sequential(nn.Conv2d(inplanes, inplanes, kernel_size=3, padding=1, bias=False),
                                       nn.BatchNorm2d(inplanes),
