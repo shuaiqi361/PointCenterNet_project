@@ -130,42 +130,6 @@ class exkp(nn.Module):
                                                   nn.BatchNorm2d(curr_dim))
                                     for _ in range(nstack - 1)])
         # heatmap layers
-        # self.amodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim, kernel_size=3, padding=1, bias=False),
-        #                                  nn.BatchNorm2d(cnv_dim),
-        #                                  nn.ReLU(inplace=True))
-        # self.inmodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim, kernel_size=3, padding=1, bias=False),
-        #                                   nn.BatchNorm2d(cnv_dim),
-        #                                   nn.ReLU(inplace=True))
-        self.amodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim * 2, kernel_size=1, bias=False),
-                                         nn.BatchNorm2d(cnv_dim * 2),
-                                         nn.ReLU(inplace=True),
-                                         nn.Conv2d(cnv_dim * 2, cnv_dim * 2, kernel_size=3, padding=1, bias=False),
-                                         nn.BatchNorm2d(cnv_dim * 2),
-                                         nn.ReLU(inplace=True),
-                                         nn.Conv2d(cnv_dim * 2, cnv_dim, kernel_size=1, bias=False),
-                                         nn.BatchNorm2d(cnv_dim),
-                                         nn.ReLU(inplace=True))
-        self.inmodal_conv = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim * 2, kernel_size=1, bias=False),
-                                          nn.BatchNorm2d(cnv_dim * 2),
-                                          nn.ReLU(inplace=True),
-                                          nn.Conv2d(cnv_dim * 2, cnv_dim * 2, kernel_size=3, padding=1, bias=False),
-                                          nn.BatchNorm2d(cnv_dim * 2),
-                                          nn.ReLU(inplace=True),
-                                          nn.Conv2d(cnv_dim * 2, cnv_dim, kernel_size=1, bias=False),
-                                          nn.BatchNorm2d(cnv_dim),
-                                          nn.ReLU(inplace=True))
-        self.spatial_aggregate_conv = SpatialAggregationModule(cnv_dim, cnv_dim // 2, dilation=[4, 8, 12],
-                                                               padding=[4, 8, 12], residual=True)
-        # self.fusion = nn.Sequential(nn.Conv2d(cnv_dim, cnv_dim // 2, kernel_size=1, padding=0, bias=False),
-        #                             nn.BatchNorm2d(cnv_dim // 2),
-        #                             nn.ReLU(inplace=True),
-        #                             nn.Conv2d(cnv_dim // 2, cnv_dim // 2, kernel_size=3, padding=6, dilation=6,
-        #                                       bias=False),
-        #                             nn.BatchNorm2d(cnv_dim // 2),
-        #                             nn.ReLU(inplace=True),
-        #                             nn.Conv2d(cnv_dim // 2, cnv_dim, kernel_size=1, padding=0, bias=False),
-        #                             nn.BatchNorm2d(cnv_dim),
-        #                             nn.ReLU(inplace=True))
         self.hmap = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, num_classes) for _ in range(nstack)])
         for hmap in self.hmap:
             hmap[-1].bias.data.fill_(-2.19)
@@ -175,10 +139,8 @@ class exkp(nn.Module):
         self.w_h_ = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 2) for _ in range(nstack)])
 
         # codes layers from amodal features
-        self.codes_1 = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, self.n_codes) for _ in range(nstack)])
-        self.codes_2 = nn.ModuleList([make_kp_layer(self.n_codes, curr_dim, self.n_codes) for _ in range(nstack)])
+        self.codes = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, self.n_codes) for _ in range(nstack)])
         self.offsets = nn.ModuleList([make_kp_layer(cnv_dim, curr_dim, 2) for _ in range(nstack)])
-
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, image):
@@ -190,15 +152,8 @@ class exkp(nn.Module):
             cnv = self.cnvs[ind](kp)
 
             if self.training or ind == self.nstack - 1:
-                amodal_cnv = self.amodal_conv(cnv)
-                inmodal_cnv = self.inmodal_conv(cnv)
-                fused_feat = self.spatial_aggregate_conv(amodal_cnv)
-                code_out_1 = self.codes_1[ind](fused_feat)
-                code_out_2 = self.codes_2[ind](code_out_1) + code_out_1
-                offsets_out = self.offsets[ind](fused_feat)
-
-                outs.append([self.hmap[ind](inmodal_cnv), self.regs[ind](inmodal_cnv), self.w_h_[ind](inmodal_cnv),
-                             code_out_1, code_out_2, offsets_out])
+                outs.append([self.hmap[ind](cnv), self.regs[ind](cnv), self.w_h_[ind](cnv),
+                             self.codes[ind](cnv), self.offsets[ind](cnv)])
 
             if ind < self.nstack - 1:
                 inter = self.inters_[ind](inter) + self.cnvs_[ind](cnv)
