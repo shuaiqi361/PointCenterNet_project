@@ -187,7 +187,7 @@ def adapt_norm_reg_loss(regs, gt_regs, mask, sparsity=0.01, norm='abs'):
     else:
         norm_gt_codes = torch.clamp(torch.abs(gt_regs), min=0.1)
 
-    loss = sum(torch.sum(F.l1_loss(r * mask, gt_regs * mask, reduction='none') * len_vec / norm_gt_codes) / (
+    loss = sum(torch.sum(F.l1_loss(r * mask, gt_regs * mask, reduction='none') / norm_gt_codes) / (
             mask.sum() + 1e-4) for r in regs)
     # loss = sum(torch.sum(torch.abs(r * mask - gt_regs * mask) / norm_gt_codes) / (mask.sum() + 1e-4) for r in regs)
     sparsity_loss = sum(torch.sum(torch.log(1 + (r * mask) ** 2.)) / (mask.sum() + 1e-4) for r in regs)
