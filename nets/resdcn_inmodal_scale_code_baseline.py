@@ -4,6 +4,7 @@ import torch.nn as nn
 from nets.deform_conv import DCN
 import torch.utils.model_zoo as model_zoo
 from nets.spatial_aggregation_conv_large import SpatialAggregationModule
+from nets.pre_activation_code import PreActResidualModule
 
 BN_MOMENTUM = 0.1
 model_urls = {'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -172,14 +173,11 @@ class PoseResNet(nn.Module):
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, 2, kernel_size=1, bias=True))
 
-            self.codes = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                       nn.ReLU(inplace=True),
-                                       nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
+            self.codes = PreActResidualModule(head_conv, head_conv, self.num_codes, num_blocks=3)
 
         fill_fc_weights(self.regs)
         fill_fc_weights(self.w_h_)
         fill_fc_weights(self.spatial_aggregate_conv)
-
         fill_fc_weights(self.inmodal_conv)
         fill_fc_weights(self.amodal_conv)
         fill_fc_weights(self.offsets)

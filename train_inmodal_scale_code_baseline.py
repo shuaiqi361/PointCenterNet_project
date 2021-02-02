@@ -190,7 +190,7 @@ def main():
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
-            codes = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes]
+            codes = [_tranpose_and_gather_feature(r, batch['inds']) for r in code_ for code_ in codes]
             offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
@@ -199,13 +199,13 @@ def main():
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
 
             if cfg.code_loss == 'norm':
-                codes_loss = norm_reg_loss(codes, batch['codes'], batch['ind_masks'], sparsity=0.)
+                codes_loss = sum(norm_reg_loss(c, batch['codes'], batch['ind_masks'], sparsity=0.) for c in codes) / len(codes)
             elif cfg.code_loss == 'adapt':
-                codes_loss = adapt_norm_reg_loss(codes, batch['codes'], batch['ind_masks'], sparsity=0.,
-                                                 norm=cfg.adapt_norm)
+                codes_loss = sum(adapt_norm_reg_loss(c, batch['codes'], batch['ind_masks'], sparsity=0.,
+                                                 norm=cfg.adapt_norm) for c in codes) / len(codes)
             elif cfg.code_loss == 'wing':
-                codes_loss = wing_norm_reg_loss(codes, batch['codes'], batch['ind_masks'], sparsity=0.,
-                                                epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)
+                codes_loss = sum(wing_norm_reg_loss(c, batch['codes'], batch['ind_masks'], sparsity=0.,
+                                                epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) for c in codes) / len(codes)
             else:
                 print('Loss type for code not implemented yet.')
                 raise NotImplementedError
@@ -252,7 +252,7 @@ def main():
 
                     hmap, regs, w_h_, codes, offsets = model(inputs[scale]['image'])[-1]
 
-                    output = [hmap, regs, w_h_, codes, offsets]
+                    output = [hmap, regs, w_h_, codes[-1], offsets]
 
                     segms = ctsegm_scale_decode(*output,
                                                 torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
