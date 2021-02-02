@@ -193,7 +193,6 @@ def main():
             codes = [_tranpose_and_gather_feature(r, batch['inds']) for code_ in codes for r in code_]
             offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
-
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
@@ -211,7 +210,7 @@ def main():
                 print('Loss type for code not implemented yet.')
                 raise NotImplementedError
 
-            loss = hmap_loss + reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
+            loss = 1.0 * hmap_loss + 1.0 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
 
             optimizer.zero_grad()
             loss.backward()
