@@ -190,8 +190,9 @@ def main():
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
-            codes = [_tranpose_and_gather_feature(r, batch['inds']) for r in code_ for code_ in codes]
+            codes = [_tranpose_and_gather_feature(r, batch['inds']) for code_ in codes for r in code_]
             offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
+
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])

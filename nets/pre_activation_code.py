@@ -14,7 +14,7 @@ def fill_fc_weights(layers):
 class PreActResidualModule(nn.Module):
     def __init__(self, inplanes, head_conv, outplanes, num_blocks):
         super(PreActResidualModule, self).__init__()
-
+        self.num_blocks = num_blocks
         self.input_conv = nn.Sequential(nn.Conv2d(inplanes, head_conv, kernel_size=1, padding=0, bias=False),
                                         nn.BatchNorm2d(head_conv),
                                         nn.ReLU(inplace=True),
@@ -41,7 +41,7 @@ class PreActResidualModule(nn.Module):
         x = self.input_conv(x)
 
         out = []
-        for i in range(len(self.output_convs)):
+        for i in range(self.num_blocks):
             res = getattr(self, 'residual_code_' + str(i))
             outs = getattr(self, 'output_code_' + str(i))
             x = x + res(x)
