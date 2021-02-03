@@ -263,12 +263,12 @@ class PoseResNet(nn.Module):
         sp_occ_feat = self.spatial_aggregate_conv(amodal_x + inmodal_x)
 
         # inmodal feature outputs
-        heatmap = self.hmap(inmodal_x)
+        heatmap = self.hmap(sp_occ_feat)
         regs = self.regs(inmodal_x)
         w_h_bbox = self.w_h_(inmodal_x)
 
         # amodal feature outputs
-        offsets = self.offsets(sp_occ_feat)
+        offsets = self.offsets(inmodal_x)
         xc = self.codes(sp_occ_feat)
 
         return [[heatmap, regs, w_h_bbox, xc, offsets]]
