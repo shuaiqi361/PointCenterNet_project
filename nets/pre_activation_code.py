@@ -23,10 +23,10 @@ class PreActResidualModule(nn.Module):
         for i in range(num_blocks):
             res = nn.Sequential(nn.BatchNorm2d(head_conv),
                                 nn.ReLU(inplace=True),
-                                nn.Conv2d(head_conv, head_conv // 2, kernel_size=1, padding=0, bias=False),
-                                nn.BatchNorm2d(head_conv // 2),
+                                nn.Conv2d(head_conv, head_conv * 2, kernel_size=1, padding=0, bias=False),
+                                nn.BatchNorm2d(head_conv * 2),
                                 nn.ReLU(inplace=True),
-                                nn.Conv2d(head_conv // 2, head_conv, kernel_size=3, padding=1, bias=False))
+                                nn.Conv2d(head_conv * 2, head_conv, kernel_size=3, padding=1, bias=False))
             outs = nn.Sequential(nn.BatchNorm2d(head_conv),
                                  nn.ReLU(inplace=True),
                                  nn.Conv2d(head_conv, outplanes, kernel_size=1, padding=0, bias=True))

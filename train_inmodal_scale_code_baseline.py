@@ -311,7 +311,7 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
             stat = val_map(epoch)
             if stat > best_mAP:
                 print('Overall mAP {:.3f} is improving ...'.format(stat))
