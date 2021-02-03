@@ -168,16 +168,12 @@ class PoseResNet(nn.Module):
             # self.spatial_aggregate_conv = SpatialAggregationModule(head_conv, head_conv // 2, dilation=[4, 8, 12],
             #                                                        padding=[4, 8, 12], residual=True)
 
-            self.spatial_aggregate_conv = nn.Sequential(
-                                        nn.Conv2d(head_conv, head_conv * 2, kernel_size=3, padding=1, bias=False),
-                                        nn.BatchNorm2d(head_conv * 2),
-                                        nn.ReLU(inplace=True),
-                                        nn.Conv2d(head_conv * 2, head_conv * 2, kernel_size=3, padding=1, bias=False),
-                                        nn.BatchNorm2d(head_conv * 2),
-                                        nn.ReLU(inplace=True),
-                                        nn.Conv2d(head_conv * 2, head_conv, kernel_size=1, padding=0, bias=False),
-                                        nn.BatchNorm2d(head_conv),
-                                        nn.ReLU(inplace=True))
+            self.spatial_aggregate_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=False),
+                                          nn.BatchNorm2d(head_conv),
+                                          nn.ReLU(inplace=True),
+                                          nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=False),
+                                          nn.BatchNorm2d(head_conv),
+                                          nn.ReLU(inplace=True))
 
             # mass center offsets and codes
             self.offsets = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
