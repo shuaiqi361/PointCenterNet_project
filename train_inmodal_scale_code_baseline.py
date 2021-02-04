@@ -22,11 +22,12 @@ from datasets.coco_inmodal_scale_code_baseline import COCOSEGMCMM, COCO_eval_seg
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
-from nets.resdcn_inmodal_scale_code_baseline import get_pose_resdcn
+# from nets.resdcn_inmodal_scale_code_baseline import get_pose_resdcn
+from nets.resdcn_inmodal_scaled_code_pre_act import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, adapt_norm_reg_loss, wing_norm_reg_loss
+from utils.losses import _neg_loss, _reg_loss, norm_reg_loss, adapt_norm_reg_loss, wing_norm_reg_loss, sparse_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_scale_decode
 
@@ -186,11 +187,14 @@ def main():
             dict_tensor.requires_grad = False
 
             outputs = model(batch['image'])
-            hmap, regs, w_h_, codes, offsets = zip(*outputs)
+            hmap, regs, w_h_, codes_1, codes_2, codes_3, offsets = zip(*outputs)
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
-            codes = [_tranpose_and_gather_feature(r, batch['inds']) for code_ in codes for r in code_]
+            # codes = [_tranpose_and_gather_feature(r, batch['inds']) for code_ in codes for r in code_]
+            c_1 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_1]
+            c_2 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_2]
+            c_3 = [_tranpose_and_gather_feature(r, batch['inds']) for r in codes_3]
             offsets = [_tranpose_and_gather_feature(r, batch['inds']) for r in offsets]
 
             hmap_loss = _neg_loss(hmap, batch['hmap'])
@@ -199,16 +203,32 @@ def main():
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
 
             if cfg.code_loss == 'norm':
-                codes_loss = sum(norm_reg_loss(c, batch['codes'], batch['ind_masks'], sparsity=0.) for c in codes) / len(codes)
+                codes_loss = (sparse_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.001)
+                              + sparse_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.001)
+                              + sparse_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.001)) / 3.
             elif cfg.code_loss == 'adapt':
-                codes_loss = sum(adapt_norm_reg_loss(c, batch['codes'], batch['ind_masks'], sparsity=0.,
-                                                 norm=cfg.adapt_norm) for c in codes) / len(codes)
+                codes_loss = (adapt_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.001, norm=cfg.adapt_norm) +
+                              adapt_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.001, norm=cfg.adapt_norm) +
+                              adapt_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.001, norm=cfg.adapt_norm)) / 3.0
             elif cfg.code_loss == 'wing':
-                codes_loss = sum(wing_norm_reg_loss(c, batch['codes'], batch['ind_masks'], sparsity=0.,
-                                                epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) for c in codes) / len(codes)
+                codes_loss = (wing_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.001, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
+                              wing_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.001, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
+                              wing_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.001, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)) / 3.0
             else:
                 print('Loss type for code not implemented yet.')
                 raise NotImplementedError
+
+            # if cfg.code_loss == 'norm':
+            #     codes_loss = sum(norm_reg_loss(c, batch['codes'], batch['ind_masks'], sparsity=0.) for c in codes) / len(codes)
+            # elif cfg.code_loss == 'adapt':
+            #     codes_loss = sum(adapt_norm_reg_loss(c, batch['codes'], batch['ind_masks'], sparsity=0.,
+            #                                      norm=cfg.adapt_norm) for c in codes) / len(codes)
+            # elif cfg.code_loss == 'wing':
+            #     codes_loss = sum(wing_norm_reg_loss(c, batch['codes'], batch['ind_masks'], sparsity=0.,
+            #                                     epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) for c in codes) / len(codes)
+            # else:
+            #     print('Loss type for code not implemented yet.')
+            #     raise NotImplementedError
 
             loss = 1.0 * hmap_loss + 1.0 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
 
@@ -250,9 +270,9 @@ def main():
                 for scale in inputs:
                     inputs[scale]['image'] = inputs[scale]['image'].to(cfg.device)
 
-                    hmap, regs, w_h_, codes, offsets = model(inputs[scale]['image'])[-1]
+                    hmap, regs, w_h_, _, _, codes, offsets = model(inputs[scale]['image'])[-1]
 
-                    output = [hmap, regs, w_h_, codes[-1], offsets]
+                    output = [hmap, regs, w_h_, codes, offsets]
 
                     segms = ctsegm_scale_decode(*output,
                                                 torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device),
