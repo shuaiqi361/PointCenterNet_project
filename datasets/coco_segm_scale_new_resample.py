@@ -141,9 +141,9 @@ class COCOSEGMCMM(data.Dataset):
             fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
             fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
 
-            # contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
-            # if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
-            #     continue
+            contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
+            if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
+                continue
 
             updated_bbox = [np.min(fixed_contour[:, 0]), np.min(fixed_contour[:, 1]),
                             np.max(fixed_contour[:, 0]), np.max(fixed_contour[:, 1])]

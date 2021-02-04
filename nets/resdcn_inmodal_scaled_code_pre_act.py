@@ -176,25 +176,25 @@ class PoseResNet(nn.Module):
 
             self.codes_1 = nn.Sequential(nn.BatchNorm2d(head_conv),
                                          nn.ReLU(inplace=True),
-                                         nn.Conv2d(head_conv, 128, kernel_size=1, padding=0, bias=False),
+                                         nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=False),
                                          nn.BatchNorm2d(128),
                                          nn.ReLU(inplace=True),
-                                         nn.Conv2d(128, head_conv, kernel_size=3, padding=1, bias=False))
+                                         nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=False))
             self.compress_1 = nn.Sequential(nn.BatchNorm2d(head_conv),
                                             nn.ReLU(inplace=True),
                                             nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
             self.codes_2 = nn.Sequential(nn.BatchNorm2d(head_conv),
                                          nn.ReLU(inplace=True),
-                                         nn.Conv2d(head_conv, 128, kernel_size=1, padding=0, bias=False),
+                                         nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=False),
                                          nn.BatchNorm2d(128),
                                          nn.ReLU(inplace=True),
-                                         nn.Conv2d(128, head_conv, kernel_size=3, padding=1, bias=False))
+                                         nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=False))
             self.compress_2 = nn.Sequential(nn.BatchNorm2d(head_conv),
                                             nn.ReLU(inplace=True),
                                             nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
             self.codes_3 = nn.Sequential(nn.BatchNorm2d(head_conv),
                                          nn.ReLU(inplace=True),
-                                         nn.Conv2d(head_conv, 128, kernel_size=1, padding=0, bias=False),
+                                         nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=False),
                                          nn.BatchNorm2d(128),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=False))

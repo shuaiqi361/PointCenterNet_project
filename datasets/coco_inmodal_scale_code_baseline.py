@@ -250,7 +250,7 @@ class COCOSEGMCMM(data.Dataset):
                 shapes_[k] = norm_shape.reshape((1, -1))
                 center_offsets[k] = mass_center - obj_c
                 codes_[k], _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
-                                          lmbda=self.sparse_alpha, max_iter=80)
+                                          lmbda=self.sparse_alpha, max_iter=60)
                 activated_codes[k] = (np.abs(codes_[k]) > 1e-4) * 1  # active codes annotated 1
 
                 w_h_[k] = 1. * w, 1. * h

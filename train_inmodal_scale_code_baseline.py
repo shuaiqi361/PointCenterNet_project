@@ -183,8 +183,8 @@ def main():
                 if k != 'meta':
                     batch[k] = batch[k].to(device=cfg.device, non_blocking=True)
 
-            dict_tensor = torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True)
-            dict_tensor.requires_grad = False
+            # dict_tensor = torch.from_numpy(dictionary.astype(np.float32)).to(cfg.device, non_blocking=True)
+            # dict_tensor.requires_grad = False
 
             outputs = model(batch['image'])
             hmap, regs, w_h_, codes_1, codes_2, codes_3, offsets = zip(*outputs)
@@ -203,17 +203,17 @@ def main():
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
 
             if cfg.code_loss == 'norm':
-                codes_loss = (sparse_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.001)
-                              + sparse_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.001)
-                              + sparse_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.001)) / 3.
+                codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
+                              + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
+                              + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
             elif cfg.code_loss == 'adapt':
-                codes_loss = (adapt_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.001, norm=cfg.adapt_norm) +
-                              adapt_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.001, norm=cfg.adapt_norm) +
-                              adapt_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.001, norm=cfg.adapt_norm)) / 3.0
+                codes_loss = (adapt_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm) +
+                              adapt_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm) +
+                              adapt_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm)) / 3.0
             elif cfg.code_loss == 'wing':
-                codes_loss = (wing_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.001, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
-                              wing_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.001, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
-                              wing_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.001, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)) / 3.0
+                codes_loss = (wing_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
+                              wing_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
+                              wing_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)) / 3.0
             else:
                 print('Loss type for code not implemented yet.')
                 raise NotImplementedError
@@ -331,7 +331,7 @@ def main():
         start = time.time()
         train_sampler.set_epoch(epoch)
         train(epoch)
-        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 3:
+        if (cfg.val_interval > 0 and epoch % cfg.val_interval == 0) or epoch == 2:
             stat = val_map(epoch)
             if stat > best_mAP:
                 print('Overall mAP {:.3f} is improving ...'.format(stat))
