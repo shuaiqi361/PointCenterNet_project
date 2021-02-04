@@ -203,17 +203,17 @@ def main():
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
 
             if cfg.code_loss == 'norm':
-                codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
-                              + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
-                              + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
+                codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.02)
+                              + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.02)
+                              + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.02)) / 3.
             elif cfg.code_loss == 'adapt':
                 codes_loss = (adapt_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm) +
                               adapt_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm) +
                               adapt_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm)) / 3.0
             elif cfg.code_loss == 'wing':
-                codes_loss = (wing_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
-                              wing_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
-                              wing_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)) / 3.0
+                codes_loss = (wing_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.02, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
+                              wing_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.02, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
+                              wing_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.02, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)) / 3.0
             else:
                 print('Loss type for code not implemented yet.')
                 raise NotImplementedError
@@ -230,7 +230,7 @@ def main():
             #     print('Loss type for code not implemented yet.')
             #     raise NotImplementedError
 
-            loss = 1.0 * hmap_loss + 1.0 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + 0.1 * offsets_loss
+            loss = 1.0 * hmap_loss + 1.0 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss + 0.5 * offsets_loss
 
             optimizer.zero_grad()
             loss.backward()
