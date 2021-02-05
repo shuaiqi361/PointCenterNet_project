@@ -150,7 +150,6 @@ class PoseResNet(nn.Module):
             # ------- amodal features
             # heatmap layers
             self.hmap = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
-                                      nn.BatchNorm2d(head_conv),
                                       nn.ReLU(inplace=True),
                                       nn.Conv2d(head_conv, num_classes, kernel_size=1, bias=True))
             self.hmap[-1].bias.data.fill_(-2.19)
@@ -173,15 +172,19 @@ class PoseResNet(nn.Module):
                                      nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
                                      nn.BatchNorm2d(128),
                                      nn.ReLU(inplace=True),
-                                     nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=True))
+                                     nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=False),
+                                     nn.BatchNorm2d(head_conv),
+                                     nn.ReLU(inplace=True))
+
+            self.code_conv = nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True)
 
             self.codes_1 = nn.Sequential(nn.BatchNorm2d(head_conv),
                                          nn.ReLU(inplace=True),
                                          nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=False),
                                          nn.BatchNorm2d(128),
                                          nn.ReLU(inplace=True),
-                                         nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=False))
-            self.compress_1 = nn.Sequential(nn.BatchNorm2d(head_conv),
+                                         nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=True))
+            self.compress_1 = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                             nn.ReLU(inplace=True),
                                             nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
             self.codes_2 = nn.Sequential(nn.BatchNorm2d(head_conv),
@@ -189,8 +192,8 @@ class PoseResNet(nn.Module):
                                          nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=False),
                                          nn.BatchNorm2d(128),
                                          nn.ReLU(inplace=True),
-                                         nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=False))
-            self.compress_2 = nn.Sequential(nn.BatchNorm2d(head_conv),
+                                         nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=True))
+            self.compress_2 = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                             nn.ReLU(inplace=True),
                                             nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
             self.codes_3 = nn.Sequential(nn.BatchNorm2d(head_conv),
@@ -198,8 +201,8 @@ class PoseResNet(nn.Module):
                                          nn.Conv2d(head_conv, 128, kernel_size=3, padding=1, bias=False),
                                          nn.BatchNorm2d(128),
                                          nn.ReLU(inplace=True),
-                                         nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=False))
-            self.compress_3 = nn.Sequential(nn.BatchNorm2d(head_conv),
+                                         nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=True))
+            self.compress_3 = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                             nn.ReLU(inplace=True),
                                             nn.Conv2d(head_conv, self.num_codes, kernel_size=1, padding=0, bias=True))
 
@@ -209,6 +212,7 @@ class PoseResNet(nn.Module):
         fill_fc_weights(self.offsets)
         fill_fc_weights(self.inmodal_conv)
         fill_fc_weights(self.amodal_conv)
+        fill_fc_weights(self.code_conv)
         fill_fc_weights(self.codes_1)
         fill_fc_weights(self.codes_2)
         fill_fc_weights(self.codes_3)
@@ -293,10 +297,10 @@ class PoseResNet(nn.Module):
         x = self.deconv_layers(x)
         amodal_x = self.amodal_conv(x)
         inmodal_x = self.inmodal_conv(x)
-        occ_feats = self.occ(amodal_x + inmodal_x)
+        in_cls = self.occ(amodal_x + inmodal_x)
 
-        in_cls = occ_feats
-        pre_act_1 = self.codes_1(in_cls) + in_cls
+        code_c = self.code_conv(in_cls)
+        pre_act_1 = self.codes_1(code_c) + code_c
         xc_1 = self.compress_1(pre_act_1)
         pre_act_2 = self.codes_2(pre_act_1) + pre_act_1
         xc_2 = self.compress_2(pre_act_2)
