@@ -149,7 +149,8 @@ class PoseResNet(nn.Module):
         if head_conv > 0:
             # ------- amodal features
             # heatmap layers
-            self.hmap = nn.Sequential(nn.BatchNorm2d(head_conv),
+            self.hmap = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
+                                      nn.BatchNorm2d(head_conv),
                                       nn.ReLU(inplace=True),
                                       nn.Conv2d(head_conv, num_classes, kernel_size=1, bias=True))
             self.hmap[-1].bias.data.fill_(-2.19)
@@ -172,7 +173,7 @@ class PoseResNet(nn.Module):
                                      nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
                                      nn.BatchNorm2d(128),
                                      nn.ReLU(inplace=True),
-                                     nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=False))
+                                     nn.Conv2d(128, head_conv, kernel_size=1, padding=0, bias=True))
 
             self.codes_1 = nn.Sequential(nn.BatchNorm2d(head_conv),
                                          nn.ReLU(inplace=True),
