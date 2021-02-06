@@ -196,9 +196,9 @@ def main():
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
             if cfg.code_loss == 'norm':
-                codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.03)
-                              + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.03)
-                              + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.03)) / 3.
+                codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.02)
+                              + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.02)
+                              + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.02)) / 3.
             elif cfg.code_loss == 'adapt':
                 codes_loss = (adapt_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm) +
                               adapt_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm) +
