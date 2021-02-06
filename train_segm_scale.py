@@ -22,11 +22,12 @@ from datasets.coco_segm_scale_new_resample import COCOSEGMCMM, COCO_eval_segm_cm
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
-from nets.resdcn_inmodal_scaled_code_pre_act import get_pose_resdcn
+from nets.resdcn_inmodal_scale_code_pre_act_old import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
-from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss, norm_reg_loss, sparse_reg_loss
+from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss, norm_reg_loss, sparse_reg_loss, \
+    wing_norm_reg_loss, adapt_norm_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_scale_decode
 
@@ -56,6 +57,10 @@ parser.add_argument('--cmm_loss_weight', type=float, default=1)
 parser.add_argument('--code_loss_weight', type=float, default=1)
 parser.add_argument('--active_weight', type=float, default=1)
 parser.add_argument('--bce_loss_weight', type=float, default=1)
+parser.add_argument('--code_loss', type=str, default='wing')
+parser.add_argument('--adapt_norm', type=str, default='sqrt')
+parser.add_argument('--wing_epsilon', type=float, default=1.0)
+parser.add_argument('--wing_omega', type=float, default=1.0)
 
 parser.add_argument('--lr', type=float, default=5e-4)
 parser.add_argument('--lr_step', type=str, default='90,120')
@@ -172,7 +177,7 @@ def main():
             dict_tensor.requires_grad = False
 
             outputs = model(batch['image'])
-            hmap, regs, w_h_, offsets, codes_1, codes_2, codes_3, = zip(*outputs)
+            hmap, regs, w_h_, codes_1, codes_2, codes_3, offsets = zip(*outputs)
 
             regs = [_tranpose_and_gather_feature(r, batch['inds']) for r in regs]
             w_h_ = [_tranpose_and_gather_feature(r, batch['inds']) for r in w_h_]
@@ -190,9 +195,21 @@ def main():
             reg_loss = _reg_loss(regs, batch['regs'], batch['ind_masks'])
             w_h_loss = _reg_loss(w_h_, batch['w_h_'], batch['ind_masks'])
             offsets_loss = _reg_loss(offsets, batch['offsets'], batch['ind_masks'])
-            codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'])
-                          + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'])
-                          + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
+            if cfg.code_loss == 'norm':
+                codes_loss = (norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.03)
+                              + norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.03)
+                              + norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.03)) / 3.
+            elif cfg.code_loss == 'adapt':
+                codes_loss = (adapt_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm) +
+                              adapt_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm) +
+                              adapt_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], norm=cfg.adapt_norm)) / 3.0
+            elif cfg.code_loss == 'wing':
+                codes_loss = (wing_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.01, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
+                              wing_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.01, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
+                              wing_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.01, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)) / 3.0
+            else:
+                print('Loss type for code not implemented yet.')
+                raise NotImplementedError
 
             # codes_loss = (sparse_reg_loss(c_1, batch['codes'], batch['ind_masks'])
             #               + sparse_reg_loss(c_2, batch['codes'], batch['ind_masks'])
@@ -203,7 +220,7 @@ def main():
                         + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
 
             loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss \
-                   + 0.1 * offsets_loss + cfg.cmm_loss_weight * cmm_loss
+                   + 0.2 * offsets_loss + cfg.cmm_loss_weight * cmm_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -245,7 +262,7 @@ def main():
                 for scale in inputs:
                     inputs[scale]['image'] = inputs[scale]['image'].to(cfg.device)
 
-                    hmap, regs, w_h_, offsets, _, _, codes = model(inputs[scale]['image'])[-1]
+                    hmap, regs, w_h_, _, _, codes, offsets = model(inputs[scale]['image'])[-1]
 
                     output = [hmap, regs, w_h_, codes, offsets]
 
