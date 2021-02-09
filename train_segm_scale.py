@@ -53,7 +53,7 @@ parser.add_argument('--split_ratio', type=float, default=1.0)
 parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
 parser.add_argument('--sparse_alpha', type=float, default=0.01)
-parser.add_argument('--cmm_loss_weight', type=float, default=1)
+parser.add_argument('--shape_loss_weight', type=float, default=1)
 parser.add_argument('--shape_loss', type=str, default='piou')
 parser.add_argument('--code_loss_weight', type=float, default=1)
 parser.add_argument('--active_weight', type=float, default=1)
@@ -233,7 +233,7 @@ def main():
                 raise NotImplementedError
 
             loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss \
-                   + 0.2 * offsets_loss + cfg.cmm_loss_weight * shape_loss
+                   + 0.2 * offsets_loss + cfg.shape_loss_weight * shape_loss
 
             optimizer.zero_grad()
             loss.backward()
