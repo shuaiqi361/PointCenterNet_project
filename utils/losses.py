@@ -20,6 +20,22 @@ import math
 #     return loss / 2. + sparsity * loss_sparsity
 
 
+def PIoU_loss(pred_shapes, gt_shapes, mask):
+    batch_size, max_obj, n_dims = gt_shapes.size()
+    # convert to distances
+    pred_dist = torch.sqrt(torch.sum(pred_shapes.view(batch_size, max_obj, -1, 2) ** 2., dim=-1))
+    gt_dist = torch.sqrt(torch.sum(gt_shapes.view(batch_size, max_obj, -1, 2) ** 2., dim=-1))
+
+    total = torch.stack([pred_dist, gt_dist], dim=-1)
+    l_max = total.max(dim=-1).clamp(min=1e-4)
+    l_min = total.min(dim=-1).clamp(min=1e-4)  # (batch_size, max_obj, n_dims)
+
+    loss = (l_max.sum(dim=-1) / l_min.sum(dim=-1)).log()
+    loss = torch.sum(loss * mask / (mask.sum() + 1e-4))
+
+    return loss
+
+
 def norm_contour_mapping_loss(pred_codes, pred_shapes, gt_shapes, gt_w_h, mask, sparsity=0.1):
     # gt_shape size: (bs, 128, 64)
     norm_factor = torch.sqrt(gt_w_h[:, :, 0] * gt_w_h[:, :, 1])[:, :, None] + 1e-4
@@ -282,7 +298,11 @@ def smooth_reg_loss(regs, gt_regs, mask):
     return loss / len(regs)
 
 
-def mse_reg_loss(regs, gt_regs, mask):
+def mse_reg_loss(regs, gt_regs, mask, sparsity=0.01):
     mask = mask[:, :, None].expand_as(gt_regs).float()
     loss = sum(F.mse_loss(r * mask, gt_regs * mask, reduction='sum') / (mask.sum() + 1e-4) for r in regs)
-    return loss / len(regs)
+    sparsity_loss = sum(torch.sum(torch.log(1 + (r * mask) ** 2.)) / (mask.sum() + 1e-4) for r in regs)
+
+    return (loss + sparsity * sparsity_loss) / len(regs)
+
+

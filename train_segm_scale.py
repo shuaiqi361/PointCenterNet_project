@@ -27,7 +27,7 @@ from nets.resdcn_inmodal_scale_code_pre_act_old import get_pose_resdcn
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
 from utils.losses import _neg_loss, _reg_loss, contour_mapping_loss, norm_reg_loss, sparse_reg_loss, \
-    wing_norm_reg_loss, adapt_norm_reg_loss
+    wing_norm_reg_loss, adapt_norm_reg_loss, PIoU_loss, mse_reg_loss
 from utils.summary import create_summary, create_logger, create_saver, DisablePrint
 from utils.post_process import ctsegm_scale_decode
 
@@ -54,6 +54,7 @@ parser.add_argument('--n_vertices', type=int, default=32)
 parser.add_argument('--n_codes', type=int, default=64)
 parser.add_argument('--sparse_alpha', type=float, default=0.01)
 parser.add_argument('--cmm_loss_weight', type=float, default=1)
+parser.add_argument('--shape_loss', type=str, default='piou')
 parser.add_argument('--code_loss_weight', type=float, default=1)
 parser.add_argument('--active_weight', type=float, default=1)
 parser.add_argument('--bce_loss_weight', type=float, default=1)
@@ -207,6 +208,10 @@ def main():
                 codes_loss = (wing_norm_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.01, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
                               wing_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.01, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
                               wing_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.01, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)) / 3.0
+            elif cfg.code_loss == 'mse':
+                codes_loss = (mse_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.005)
+                              + mse_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.005)
+                              + mse_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.005)) / 3.
             else:
                 print('Loss type for code not implemented yet.')
                 raise NotImplementedError
@@ -215,12 +220,20 @@ def main():
             #               + sparse_reg_loss(c_2, batch['codes'], batch['ind_masks'])
             #               + sparse_reg_loss(c_3, batch['codes'], batch['ind_masks'])) / 3.
 
-            cmm_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
-                        + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
-                        + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
+            if cfg.shape_loss == 'cmm':
+                shape_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
+                            + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
+                            + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
+            elif cfg.code_loss == 'piou':
+                shape_loss = (PIoU_loss(pred_shapes=shapes_1, gt_shapes=batch['shapes'], mask=batch['ind_masks']) +
+                              PIoU_loss(pred_shapes=shapes_2, gt_shapes=batch['shapes'], mask=batch['ind_masks']) +
+                              PIoU_loss(pred_shapes=shapes_3, gt_shapes=batch['shapes'], mask=batch['ind_masks'])) / 3.
+            else:
+                print('Loss type for shape not implemented yet.')
+                raise NotImplementedError
 
             loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss \
-                   + 0.2 * offsets_loss + cfg.cmm_loss_weight * cmm_loss
+                   + 0.2 * offsets_loss + cfg.cmm_loss_weight * shape_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -232,7 +245,7 @@ def main():
                 print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
                           'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f offsets = %.3f cmm = %.3f' %
                           (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(),
-                           offsets_loss.item(), cmm_loss.item()) +
+                           offsets_loss.item(), shape_loss.item()) +
                           ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
 
                 step = len(train_loader) * epoch + batch_idx
@@ -243,7 +256,7 @@ def main():
                 summary_writer.add_scalar('offset_loss', offsets_loss.item(), step)
                 summary_writer.add_scalar('code_loss', codes_loss.item(), step)
                 # summary_writer.add_scalar('std_loss', std_loss.item(), step)
-                summary_writer.add_scalar('cmm_loss', cmm_loss.item(), step)
+                summary_writer.add_scalar('cmm_loss', shape_loss.item(), step)
         return
 
     def val_map(epoch):
