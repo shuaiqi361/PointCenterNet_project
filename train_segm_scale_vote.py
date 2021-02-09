@@ -200,7 +200,7 @@ def main():
             elif cfg.code_loss == 'wing':
                 codes_loss = wing_norm_reg_loss(codes, batch['codes'], batch['ind_masks'], sparsity=0.01, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)
             elif cfg.code_loss == 'mse':
-                codes_loss = mse_reg_loss(codes, batch['codes'], batch['ind_masks'], sparsity=0.002)
+                codes_loss = mse_reg_loss(codes, batch['codes'], batch['ind_masks'], sparsity=0.001)
             else:
                 print('Loss type for code not implemented yet.')
                 raise NotImplementedError

@@ -140,16 +140,18 @@ class COCOSEGMCMM(data.Dataset):
                 polygons = anno['segmentation'][0]
 
             gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
+            if gt_w < 5 or gt_h < 5:
+                continue
             contour = np.array(polygons).reshape((-1, 2))
 
             # Downsample the contour to fix number of vertices
-            if cv2.contourArea(contour.astype(np.int32)) < 3:
+            if cv2.contourArea(contour.astype(np.int32)) < 35:
                 continue
 
             fixed_contour = uniformsample(contour, self.n_vertices)
 
-            fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
-            fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
+            # fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
+            # fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
 
             contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
             if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
@@ -270,10 +272,27 @@ class COCOSEGMCMM(data.Dataset):
 
                 # getting the gt votes
                 shifted_poly = indexed_shape - np.array([bbox[0], bbox[1]]) + 1  # crop to the bbox, add padding 1
-                obj_mask = polys_to_mask([np.ndarray.flatten(shifted_poly, order='C').tolist()], h + 2, w + 2) * 255
+                # obj_mask = polys_to_mask([np.ndarray.flatten(shifted_poly, order='C').tolist()], h + 2, w + 2) * 255
+                obj_mask = np.zeros((int(h) + 3, int(w) + 3), dtype=np.uint8)
+                cv2.drawContours(obj_mask, shifted_poly[None, :, :].astype(np.int32), color=255, contourIdx=-1,
+                                 thickness=-1)
+
+                # instance = obj_mask.copy()
+                # obj_mask = cv2.resize(obj_mask.astype(np.uint8), dsize=(self.vote_vec_dim, self.vote_vec_dim),
+                #                       interpolation=cv2.INTER_LINEAR) * 1.
+                # votes_[k] = obj_mask.reshape((1, -1)) / 255.
+                # votes_[k] = (obj_mask.reshape((1, -1)) > 255 * 0.4) * 1.0
+
+                # show debug masks
+                # obj_mask = cv2.resize(obj_mask.astype(np.uint8), dsize=(self.vote_vec_dim, self.vote_vec_dim),
+                #                       interpolation=cv2.INTER_LINEAR)  # INTER_AREA
                 obj_mask = cv2.resize(obj_mask.astype(np.uint8), dsize=(self.vote_vec_dim, self.vote_vec_dim),
-                                      interpolation=cv2.INTER_LINEAR) * 1.
-                votes_[k] = obj_mask.reshape((1, -1)) / 255.
+                                      interpolation=cv2.INTER_AREA)
+                votes_[k] = (obj_mask > 0) * 1.0
+                # cv2.imshow('obj_mask', instance.astype(np.uint8))
+                # cv2.waitKey()
+                # cv2.imshow('votes', obj_mask.astype(np.uint8))
+                # cv2.waitKey()
 
         return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets, 'votes': votes_,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
@@ -391,3 +410,23 @@ class COCO_eval_segm_cmm(COCOSEGMCMM):
             out.append((img_id, {s: {k: torch.from_numpy(sample[s][k]).float()
             if k == 'image' else np.array(sample[s][k]) for k in sample[s]} for s in sample}))
         return out
+
+
+if __name__ == '__main__':
+    from tqdm import tqdm
+    import pickle
+
+    dataset = COCOSEGMCMM('/media/keyi/Data/Research/course_project/AdvancedCV_2020/data/COCO17',
+                          '/media/keyi/Data/Research/traffic/detection/PointCenterNet_project/dictionary/train_scaled_dict_v128_n64_a0.01.npy',
+                          'train')
+    # for d in dataset:
+    #   b1 = d
+    #   pass
+
+    # pass
+    train_loader = torch.utils.data.DataLoader(dataset, batch_size=1,
+                                               shuffle=True, num_workers=0,
+                                               pin_memory=False, drop_last=True)
+
+    for b in tqdm(train_loader):
+        pass
