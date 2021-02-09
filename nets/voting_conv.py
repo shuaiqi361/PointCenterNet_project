@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 def fill_fc_weights(layers):
@@ -26,7 +27,7 @@ class VotingModule(nn.Module):
         fill_fc_weights(self.votes_conv)
 
     def forward(self, x, votes):
-        x = self.input_conv(votes) * x
+        x = self.input_conv(F.relu(votes)) * x
         x = self.votes_conv(x)
 
         return x
