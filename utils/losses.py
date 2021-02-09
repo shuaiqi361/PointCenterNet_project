@@ -27,8 +27,8 @@ def PIoU_loss(pred_shapes, gt_shapes, mask):
     gt_dist = torch.sqrt(torch.sum(gt_shapes.view(batch_size, max_obj, -1, 2) ** 2., dim=-1))
 
     total = torch.stack([pred_dist, gt_dist], dim=-1)
-    l_max = total.max(dim=-1).clamp(min=1e-4)
-    l_min = total.min(dim=-1).clamp(min=1e-4)  # (batch_size, max_obj, n_dims)
+    l_max = total.max(dim=-1)[0].clamp(min=1e-4)
+    l_min = total.min(dim=-1)[0].clamp(min=1e-4)  # (batch_size, max_obj, n_dims)
 
     loss = (l_max.sum(dim=-1) / l_min.sum(dim=-1)).log()
     loss = torch.sum(loss * mask / (mask.sum() + 1e-4))
@@ -304,5 +304,3 @@ def mse_reg_loss(regs, gt_regs, mask, sparsity=0.01):
     sparsity_loss = sum(torch.sum(torch.log(1 + (r * mask) ** 2.)) / (mask.sum() + 1e-4) for r in regs)
 
     return (loss + sparsity * sparsity_loss) / len(regs)
-
-

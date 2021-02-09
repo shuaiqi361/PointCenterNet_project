@@ -235,7 +235,7 @@ def main():
                 raise NotImplementedError
 
             loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss \
-                   + 0.2 * offsets_loss + cfg.shape_loss_weight * shape_loss
+                   + 0.1 * offsets_loss + cfg.shape_loss_weight * shape_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -245,7 +245,7 @@ def main():
                 duration = time.perf_counter() - tic
                 tic = time.perf_counter()
                 print_log('[%d/%d-%d/%d] ' % (epoch, cfg.num_epochs, batch_idx, len(train_loader)) +
-                          'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f offsets = %.3f cmm = %.3f' %
+                          'Loss: hmap = %.3f reg = %.3f w_h = %.3f code = %.3f offsets = %.3f shape = %.3f' %
                           (hmap_loss.item(), reg_loss.item(), w_h_loss.item(), codes_loss.item(),
                            offsets_loss.item(), shape_loss.item()) +
                           ' (%d samples/sec)' % (cfg.batch_size * cfg.log_interval / duration))
@@ -258,7 +258,7 @@ def main():
                 summary_writer.add_scalar('offset_loss', offsets_loss.item(), step)
                 summary_writer.add_scalar('code_loss', codes_loss.item(), step)
                 # summary_writer.add_scalar('std_loss', std_loss.item(), step)
-                summary_writer.add_scalar('cmm_loss', shape_loss.item(), step)
+                summary_writer.add_scalar('shape_loss', shape_loss.item(), step)
         return
 
     def val_map(epoch):
