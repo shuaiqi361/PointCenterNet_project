@@ -165,10 +165,10 @@ class PoseResNet(nn.Module):
             self.occ = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.BatchNorm2d(head_conv),
                                      nn.ReLU(inplace=True),
-                                     DCN(head_conv, head_conv, kernel_size=3, padding=1, dilation=1, deformable_groups=1),
+                                     nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=3, dilation=3, bias=True),
                                      nn.BatchNorm2d(head_conv),
                                      nn.ReLU(inplace=True),
-                                     nn.Conv2d(head_conv, head_conv, kernel_size=1, padding=0, bias=True),
+                                     nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                      nn.BatchNorm2d(head_conv),
                                      nn.ReLU(inplace=True))
 
