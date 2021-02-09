@@ -224,10 +224,12 @@ def main():
                 shape_loss = (contour_mapping_loss(c_1, shapes_1, batch['shapes'], batch['ind_masks'], roll=False)
                             + contour_mapping_loss(c_2, shapes_2, batch['shapes'], batch['ind_masks'], roll=False)
                             + contour_mapping_loss(c_3, shapes_3, batch['shapes'], batch['ind_masks'], roll=False)) / 3.
-            elif cfg.code_loss == 'piou':
-                shape_loss = (PIoU_loss(pred_shapes=shapes_1, gt_shapes=batch['shapes'], mask=batch['ind_masks']) +
-                              PIoU_loss(pred_shapes=shapes_2, gt_shapes=batch['shapes'], mask=batch['ind_masks']) +
-                              PIoU_loss(pred_shapes=shapes_3, gt_shapes=batch['shapes'], mask=batch['ind_masks'])) / 3.
+            elif cfg.shape_loss == 'piou':
+                shape_loss = 0.
+                for i in range(len(shapes_1)):
+                    shape_loss += (PIoU_loss(pred_shapes=shapes_1[i], gt_shapes=batch['shapes'], mask=batch['ind_masks']) +
+                                  PIoU_loss(pred_shapes=shapes_2[i], gt_shapes=batch['shapes'], mask=batch['ind_masks']) +
+                                  PIoU_loss(pred_shapes=shapes_3[i], gt_shapes=batch['shapes'], mask=batch['ind_masks'])) / 3.
             else:
                 print('Loss type for shape not implemented yet.')
                 raise NotImplementedError
