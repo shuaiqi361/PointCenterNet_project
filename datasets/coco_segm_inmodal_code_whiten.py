@@ -13,7 +13,8 @@ from scipy.signal import resample
 
 from utils.image import get_border, get_affine_transform, affine_transform, color_aug
 from utils.image import draw_umich_gaussian, gaussian_radius
-from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon_using_mask, turning_angle_resample
+from utils.sparse_coding import fast_ista, check_clockwise_polygon, get_connected_polygon_using_mask, \
+    turning_angle_resample, uniformsample
 
 COCO_NAMES = ['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
               'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
@@ -45,8 +46,6 @@ COCO_EIGEN_VECTORS = [[-0.58752847, -0.69563484, 0.41340352],
                       [-0.5832747, 0.00994535, -0.81221408],
                       [-0.56089297, 0.71832671, 0.41158938]]
 
-# COCO_CODE_RANGE = [-615.35, 705.9]
-COCO_CODE_RANGE = [-200, 200.]
 
 def encode_mask(mask):
     """Convert mask to coco rle"""
@@ -56,15 +55,15 @@ def encode_mask(mask):
 
 
 class COCOSEGMCMM(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=31):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=31,
+                 n_coeffs=64, n_vertices=128, sparse_alpha=0.01):
         super(COCOSEGMCMM, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
         self.valid_ids = COCO_IDS
         self.cat_ids = {v: i for i, v in enumerate(self.valid_ids)}
-        self.code_range = COCO_CODE_RANGE
 
-        self.data_rng = np.random.RandomState(900)
+        self.data_rng = np.random.RandomState(909)
         self.eig_val = np.array(COCO_EIGEN_VALUES, dtype=np.float32)
         self.eig_vec = np.array(COCO_EIGEN_VECTORS, dtype=np.float32)
         self.mean = np.array(COCO_MEAN, dtype=np.float32)[None, None, :]
@@ -72,7 +71,6 @@ class COCOSEGMCMM(data.Dataset):
 
         self.split = split
         self.dictionary_file = dictionary_file
-        # self.code_stat = code_stat  # this saves mean and std of the shape coefficients
 
         self.data_dir = data_dir
         self.img_dir = os.path.join(self.data_dir, '%s2017' % split)
@@ -89,14 +87,18 @@ class COCOSEGMCMM(data.Dataset):
         self.rand_scales = np.arange(0.6, 1.3, 0.1)
         self.gaussian_iou = 0.7
 
-        self.n_vertices = 32
-        self.n_codes = 64
-        self.sparse_alpha = 0.01
+        self.n_vertices = n_vertices
+        self.n_codes = n_coeffs
+        self.sparse_alpha = sparse_alpha
 
         print('==> initializing coco 2017 %s data.' % split)
         self.coco = coco.COCO(self.annot_path)
         self.images = self.coco.getImgIds()
-        self.dictionary = np.load(self.dictionary_file)  # ndarray, shape (n_coeffs, n_vertices * 2)
+        # self.dictionary = np.load(self.dictionary_file)  # ndarray, shape (n_coeffs, n_vertices * 2)
+        with np.load(self.dictionary_file) as data_meta:
+            self.dictionary = data_meta['dictionary']
+            self.shape_mean = data_meta['mean']
+            self.shape_std = data_meta['std'] + 1e-5
 
         if 0 < split_ratio < 1:
             split_size = int(np.clip(split_ratio * len(self.images), 1, len(self.images)))
@@ -111,32 +113,38 @@ class COCOSEGMCMM(data.Dataset):
         img_path = os.path.join(self.img_dir, self.coco.loadImgs(ids=[img_id])[0]['file_name'])
         ann_ids = self.coco.getAnnIds(imgIds=[img_id])
         annotations = self.coco.loadAnns(ids=ann_ids)
-        img = self.coco.loadImgs(ids=[img_id])[0]
-        w_img = int(img['width'])
-        h_img = int(img['height'])
+        # img = self.coco.loadImgs(ids=[img_id])[0]
+        # w_img = int(img['width'])
+        # h_img = int(img['height'])
+        # if w_img < 2 or h_img < 2:
+        #     continue
 
         labels = []
         bboxes = []
         shapes = []
 
         for anno in annotations:
-            if anno['iscrowd'] == 1:  # Excludes crowd objects
+            if anno['iscrowd'] == 1 or type(anno['segmentation']) != list:  # Excludes crowd objects
                 continue
 
-            polygons = get_connected_polygon_using_mask(anno['segmentation'], (h_img, w_img),
-                                                        n_vertices=self.n_vertices, closing_max_kernel=50)
+            if len(anno['segmentation']) > 1:
+                obj_contours = [np.array(s).reshape((-1, 2)).astype(np.int32) for s in anno['segmentation']]
+                obj_contours = sorted(obj_contours, key=cv2.contourArea)
+                polygons = obj_contours[-1]  # use the segment with the largest area
+            else:
+                polygons = anno['segmentation'][0]
 
-            gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
+            # gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
 
             # Downsample the contour to fix number of vertices
-            if len(contour) > self.n_vertices:
-                fixed_contour = resample(contour, num=self.n_vertices)
-            else:
-                fixed_contour = turning_angle_resample(contour, self.n_vertices)
+            if cv2.contourArea(contour.astype(np.int32)) < 15:
+                continue
 
-            fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
-            fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
+            fixed_contour = uniformsample(contour, self.n_vertices)
+
+            # fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
+            # fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
 
             contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
             if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
@@ -167,8 +175,8 @@ class COCOSEGMCMM(data.Dataset):
         flipped = False
         if self.split == 'train':
             scale = scale * np.random.choice(self.rand_scales)
-            w_border = get_border(160, width)
-            h_border = get_border(160, height)
+            w_border = get_border(140, width)
+            h_border = get_border(140, height)
             center[0] = np.random.randint(low=w_border, high=width - w_border)
             center[1] = np.random.randint(low=h_border, high=height - h_border)
 
@@ -179,22 +187,6 @@ class COCOSEGMCMM(data.Dataset):
 
         trans_img = get_affine_transform(center, scale, 0, [self.img_size['w'], self.img_size['h']])
         img = cv2.warpAffine(img, trans_img, (self.img_size['w'], self.img_size['h']))
-
-        # -----------------------------------debug---------------------------------
-        # image_show = img.copy()
-        # for bbox, label in zip(bboxes, labels):
-        #   if flipped:
-        #     bbox[[0, 2]] = width - bbox[[2, 0]] - 1
-        #   bbox[:2] = affine_transform(bbox[:2], trans_img)
-        #   bbox[2:] = affine_transform(bbox[2:], trans_img)
-        #   bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, self.img_size['w'] - 1)
-        #   bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, self.img_size['h'] - 1)
-        #   cv2.rectangle(image_show, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
-        #   cv2.putText(image_show, self.class_name[label + 1], (int(bbox[0]), int(bbox[1])),
-        #               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        # cv2.imshow('img', image_show)
-        # cv2.waitKey()
-        # -----------------------------------debug---------------------------------
 
         img = img.astype(np.float32) / 255.
 
@@ -210,7 +202,7 @@ class COCOSEGMCMM(data.Dataset):
         hmap = np.zeros((self.num_classes, self.fmap_size['h'], self.fmap_size['w']), dtype=np.float32)  # heatmap
         w_h_ = np.zeros((self.max_objs, 2), dtype=np.float32)  # width and height of bboxes
         shapes_ = np.zeros((self.max_objs, self.n_vertices * 2), dtype=np.float32)  # gt amodal segmentation polygons
-        center_offsets = np.zeros((self.max_objs, 2), dtype=np.float32)  # gt mass centers to bbox center
+
         codes_ = np.zeros((self.max_objs, self.n_codes), dtype=np.float32)
         regs = np.zeros((self.max_objs, 2), dtype=np.float32)  # regression for offsets of shape center
         inds = np.zeros((self.max_objs,), dtype=np.int64)
@@ -247,34 +239,29 @@ class COCOSEGMCMM(data.Dataset):
             idx = np.argmin(fixed_contour[:, 0])
             indexed_shape = np.concatenate((fixed_contour[idx:, :], fixed_contour[:idx, :]), axis=0)
 
-            mass_center = np.mean(indexed_shape, axis=0)
-            if h < 1e-6 or w < 1e-6:  # remove small bboxes
+            if h < 2 or w < 2:  # remove small bboxes
                 continue
 
-            centered_shape = indexed_shape - mass_center
+            shifted_shape = (indexed_shape - np.array([bbox[0], bbox[1]])) / np.array([w, h])
+            norm_shape = (shifted_shape - self.shape_mean) / self.shape_std
 
             if h > 0 and w > 0:
                 obj_c = np.array([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2], dtype=np.float32)
-                # obj_c = mass_center
                 obj_c_int = obj_c.astype(np.int32)
 
                 radius = max(0, int(gaussian_radius((math.ceil(h), math.ceil(w)), self.gaussian_iou)))
                 draw_umich_gaussian(hmap[label], obj_c_int, radius)
-                shapes_[k] = centered_shape.reshape((1, -1))
-                center_offsets[k] = mass_center - obj_c
-                real_codes, _ = fast_ista(centered_shape.reshape((1, -1)), self.dictionary,
-                                         lmbda=self.sparse_alpha, max_iter=60)
-                # codes_[k] = (real_codes - self.code_stat[0:1, :]) / self.code_stat[1:2, :]  # codes are normalized
-                codes_[k] = (real_codes - self.code_range[0]) / (self.code_range[1] - self.code_range[0]) * 2. - 1  # squeeze into range [-1, 1]
+                shapes_[k] = norm_shape.reshape((1, -1))
+
+                codes_[k], _ = fast_ista(norm_shape.reshape((1, -1)), self.dictionary,
+                                          lmbda=self.sparse_alpha, max_iter=80)
 
                 w_h_[k] = 1. * w, 1. * h
-                # w_h_[k] = mass_center[1] - bbox[1], bbox[3] - mass_center[1], \
-                #           mass_center[0] - bbox[0], bbox[2] - mass_center[0]  # [top, bottom, left, right] distance
                 regs[k] = obj_c - obj_c_int  # discretization error
                 inds[k] = obj_c_int[1] * self.fmap_size['w'] + obj_c_int[0]
                 ind_masks[k] = 1
 
-        return {'image': img, 'shapes': shapes_, 'codes': codes_, 'offsets': center_offsets,
+        return {'image': img, 'shapes': shapes_, 'codes': codes_,
                 'hmap': hmap, 'w_h_': w_h_, 'regs': regs, 'inds': inds, 'ind_masks': ind_masks,
                 'c': center, 's': scale, 'img_id': img_id}
 
