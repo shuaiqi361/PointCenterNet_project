@@ -209,9 +209,9 @@ def main():
                               wing_norm_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.01, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega) +
                               wing_norm_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.01, epsilon=cfg.wing_epsilon, omega=cfg.wing_omega)) / 3.0
             elif cfg.code_loss == 'mse':
-                codes_loss = (mse_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.005)
-                              + mse_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.005)
-                              + mse_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.005)) / 3.
+                codes_loss = (mse_reg_loss(c_1, batch['codes'], batch['ind_masks'], sparsity=0.001)
+                              + mse_reg_loss(c_2, batch['codes'], batch['ind_masks'], sparsity=0.001)
+                              + mse_reg_loss(c_3, batch['codes'], batch['ind_masks'], sparsity=0.001)) / 3.
             else:
                 print('Loss type for code not implemented yet.')
                 raise NotImplementedError
@@ -235,7 +235,7 @@ def main():
                 raise NotImplementedError
 
             loss = 1 * hmap_loss + 1 * reg_loss + 0.1 * w_h_loss + cfg.code_loss_weight * codes_loss \
-                   + 0.1 * offsets_loss + cfg.shape_loss_weight * shape_loss
+                   + 0.5 * offsets_loss + cfg.shape_loss_weight * shape_loss
 
             optimizer.zero_grad()
             loss.backward()
