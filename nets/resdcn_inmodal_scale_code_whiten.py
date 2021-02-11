@@ -172,7 +172,7 @@ class PoseResNet(nn.Module):
         fill_fc_weights(self.regs)
         fill_fc_weights(self.w_h_)
         fill_fc_weights(self.occ)
-        fill_fc_weights(self.offsets)
+        # fill_fc_weights(self.offsets)
         fill_fc_weights(self.inmodal_conv)
         fill_fc_weights(self.amodal_conv)
         fill_fc_weights(self.codes)

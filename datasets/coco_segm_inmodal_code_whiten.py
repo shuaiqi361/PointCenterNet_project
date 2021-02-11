@@ -243,7 +243,7 @@ class COCOSEGMCMM(data.Dataset):
                 continue
 
             shifted_shape = (indexed_shape - np.array([bbox[0], bbox[1]])) / np.array([w, h])
-            norm_shape = (shifted_shape - self.shape_mean) / self.shape_std
+            norm_shape = (shifted_shape - self.shape_mean.reshape((-1, 2))) / self.shape_std.reshape((-1, 2))
 
             if h > 0 and w > 0:
                 obj_c = np.array([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2], dtype=np.float32)
