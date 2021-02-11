@@ -536,7 +536,7 @@ def ctsegm_scale_whiten_decode(hmap, regs, w_h_, codes_, dictionary, shape_mean,
 
     segms = torch.matmul(codes_, dictionary) * shape_std.view(1, 1, -1) + shape_mean.view(1, 1, -1)
     segms = segms.view(batch, K, -1, 2) * w_h_.view(batch, K, 1, 2) + \
-            torch.cat([xs, ys], dim=2).view(batch, K, 1, 2)
+            torch.cat([xs - w_h_[..., 0:1] / 2, ys - w_h_[..., 1:2] / 2], dim=2).view(batch, K, 1, 2)
     segmentations = torch.cat([segms.view(batch, K, -1), bboxes, scores, clses], dim=2)
 
     return segmentations
