@@ -112,11 +112,14 @@ def main():
 
     print_log('Setting up data...')
     dictionary = np.load(cfg.dictionary_file)
-
+    if 'hourglass' in cfg.arch:
+        cfg.padding = 127
+    else:
+        cfg.padding = 31
     Dataset = COCOSEGMCMM if cfg.dataset == 'coco' else KINSSEGMCMM
     train_dataset = Dataset(cfg.data_dir, cfg.dictionary_file,
                             'train', split_ratio=cfg.split_ratio, img_size=cfg.img_size, n_vertices=cfg.n_vertices,
-                            n_coeffs=cfg.n_codes, sparse_alpha=cfg.sparse_alpha)
+                            n_coeffs=cfg.n_codes, sparse_alpha=cfg.sparse_alpha, padding=cfg.padding)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,
                                                                     num_replicas=num_gpus,
                                                                     rank=cfg.local_rank)
@@ -131,7 +134,7 @@ def main():
 
     Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else KINS_eval_segm_cmm
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
-                               'val', test_scales=[1.], test_flip=False)
+                               'val', test_scales=[1.], test_flip=False, padding=cfg.padding)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
                                              shuffle=False, num_workers=1, pin_memory=False,
                                              collate_fn=val_dataset.collate_fn)
