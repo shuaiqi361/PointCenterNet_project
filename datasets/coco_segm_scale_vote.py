@@ -284,11 +284,11 @@ class COCOSEGMCMM(data.Dataset):
                 # votes_[k] = (obj_mask.reshape((1, -1)) > 255 * 0.4) * 1.0
 
                 # show debug masks
-                # obj_mask = cv2.resize(obj_mask.astype(np.uint8), dsize=(self.vote_vec_dim, self.vote_vec_dim),
-                #                       interpolation=cv2.INTER_LINEAR)  # INTER_AREA
                 obj_mask = cv2.resize(obj_mask.astype(np.uint8), dsize=(self.vote_vec_dim, self.vote_vec_dim),
-                                      interpolation=cv2.INTER_AREA)
-                votes_[k] = (obj_mask.reshape((1, -1)) > 0) * 1.0
+                                      interpolation=cv2.INTER_LINEAR)  # INTER_AREA
+                # obj_mask = cv2.resize(obj_mask.astype(np.uint8), dsize=(self.vote_vec_dim, self.vote_vec_dim),
+                #                       interpolation=cv2.INTER_AREA)
+                votes_[k] = (obj_mask.reshape((1, -1)) > 0.2 * 255) * 1.0
                 # cv2.imshow('obj_mask', instance.astype(np.uint8))
                 # cv2.waitKey()
                 # cv2.imshow('votes', obj_mask.astype(np.uint8))

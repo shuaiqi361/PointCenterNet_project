@@ -22,7 +22,7 @@ from datasets.coco_segm_scale_vote import COCOSEGMCMM, COCO_eval_segm_cmm
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
 from nets.hourglass_segm_cmm import get_hourglass, exkp
-from nets.resdcn_inmodal_code_vote import get_pose_resdcn
+from nets.resdcn_inmodal_code_vote_v2 import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
