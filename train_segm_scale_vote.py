@@ -131,7 +131,7 @@ def main():
 
     Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else KINS_eval_segm_cmm
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
-                               'val', test_scales=[1.], test_flip=False, fix_size=True)
+                               'val', test_scales=[1.], test_flip=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
                                              shuffle=False, num_workers=1, pin_memory=False,
                                              collate_fn=val_dataset.collate_fn)
