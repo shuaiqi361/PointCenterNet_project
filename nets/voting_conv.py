@@ -15,11 +15,11 @@ def fill_fc_weights(layers):
 class VotingModule(nn.Module):
     def __init__(self, inplanes, head_conv, outplanes):
         super(VotingModule, self).__init__()
-        self.input_conv = nn.Sequential(nn.Conv2d(inplanes, head_conv, kernel_size=1, padding=0, bias=True),
+        self.input_conv = nn.Sequential(nn.Conv2d(inplanes, head_conv, kernel_size=3, padding=1, bias=True),
                                         nn.ReLU(inplace=True),
-                                        nn.Conv2d(head_conv, head_conv, kernel_size=1, padding=0, bias=True))
+                                        nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True))
 
-        self.votes_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=1, padding=0, bias=True),
+        self.votes_conv = nn.Sequential(nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True),
                                         nn.ReLU(inplace=True),
                                         nn.Conv2d(head_conv, outplanes, kernel_size=1, padding=0, bias=True))
 

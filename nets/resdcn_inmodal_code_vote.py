@@ -273,8 +273,8 @@ class PoseResNet(nn.Module):
         hmap = self.hmap(in_cls)
         codes = self.codes(in_cls)
 
-        voted_hmap = self.voted_hmap(hmap, votes.detach())
-        voted_codes = self.voted_codes(codes, votes.detach())
+        voted_hmap = self.voted_hmap(hmap, votes)
+        voted_codes = self.voted_codes(codes, votes)
 
         out = [[voted_hmap, self.regs(inmodal_x), self.w_h_(inmodal_x), voted_codes, offsets, votes]]
         return out
