@@ -55,8 +55,8 @@ def encode_mask(mask):
 
 
 class COCOSEGMCMM(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=31,
-                 n_coeffs=64, n_vertices=32, sparse_alpha=0.01):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=127,
+                 n_coeffs=64, n_vertices=128, sparse_alpha=0.01):
         super(COCOSEGMCMM, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
@@ -273,7 +273,7 @@ class COCOSEGMCMM(data.Dataset):
 
 
 class COCO_eval_segm_cmm(COCOSEGMCMM):
-    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=31):
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=127):
         super(COCO_eval_segm_cmm, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales
