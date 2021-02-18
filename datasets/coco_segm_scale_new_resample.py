@@ -55,8 +55,8 @@ def encode_mask(mask):
 
 
 class COCOSEGMCMM(data.Dataset):
-    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=127,
-                 n_coeffs=64, n_vertices=128, sparse_alpha=0.01):
+    def __init__(self, data_dir, dictionary_file, split, split_ratio=1.0, img_size=(512, 512), padding=31,
+                 n_coeffs=64, n_vertices=180, sparse_alpha=0.01):
         super(COCOSEGMCMM, self).__init__()
         self.num_classes = 80
         self.class_name = COCO_NAMES
@@ -130,8 +130,11 @@ class COCOSEGMCMM(data.Dataset):
             else:
                 polygons = anno['segmentation'][0]
 
-            gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
+            # gt_x1, gt_y1, gt_w, gt_h = anno['bbox']
             contour = np.array(polygons).reshape((-1, 2))
+            gt_x1, gt_y1, gt_x2, gt_y2 = int(np.min(contour[:, 0])), int(np.min(contour[:, 1])), \
+                                         int(np.max(contour[:, 0])), int(np.max(contour[:, 1]))
+            # gt_w, gt_h = gt_x2 - gt_x1, gt_y2 - gt_y1
 
             # Downsample the contour to fix number of vertices
             if cv2.contourArea(contour.astype(np.int32)) < 6:
@@ -139,8 +142,8 @@ class COCOSEGMCMM(data.Dataset):
 
             fixed_contour = uniformsample(contour, self.n_vertices)
 
-            fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
-            fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
+            # fixed_contour[:, 0] = np.clip(fixed_contour[:, 0], gt_x1, gt_x1 + gt_w)
+            # fixed_contour[:, 1] = np.clip(fixed_contour[:, 1], gt_y1, gt_y1 + gt_h)
 
             contour_std = np.sqrt(np.sum(np.std(fixed_contour, axis=0) ** 2))
             if contour_std < 1e-6 or contour_std == np.inf or contour_std == np.nan:  # invalid shapes
@@ -273,7 +276,7 @@ class COCOSEGMCMM(data.Dataset):
 
 
 class COCO_eval_segm_cmm(COCOSEGMCMM):
-    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=127):
+    def __init__(self, data_dir, dictionary_file, split, test_scales=(1,), test_flip=False, fix_size=False, padding=31):
         super(COCO_eval_segm_cmm, self).__init__(data_dir, dictionary_file, split, padding)
         self.test_flip = test_flip
         self.test_scales = test_scales

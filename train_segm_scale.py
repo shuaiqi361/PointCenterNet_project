@@ -22,7 +22,8 @@ from datasets.coco_segm_scale_new_resample import COCOSEGMCMM, COCO_eval_segm_cm
 from datasets.kins_segm_cmm import KINSSEGMCMM, KINS_eval_segm_cmm
 
 from nets.hourglass_segm_scale_code import exkp
-from nets.resdcn_inmodal_scale_code_pre_act_old import get_pose_resdcn
+# from nets.resdcn_inmodal_scale_code_pre_act_old import get_pose_resdcn
+from nets.resdcn_inmodal_scale_code_new import get_pose_resdcn
 
 from utils.utils import _tranpose_and_gather_feature, load_model
 from utils.image import transform_preds
@@ -134,7 +135,7 @@ def main():
 
     Dataset_eval = COCO_eval_segm_cmm if cfg.dataset == 'coco' else KINS_eval_segm_cmm
     val_dataset = Dataset_eval(cfg.data_dir, cfg.dictionary_file,
-                               'val', test_scales=[1.], test_flip=False, padding=cfg.padding, fix_size=True)
+                               'val', test_scales=[1.], test_flip=False, padding=cfg.padding)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
                                              shuffle=False, num_workers=1, pin_memory=False,
                                              collate_fn=val_dataset.collate_fn)
