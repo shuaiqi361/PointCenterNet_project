@@ -141,17 +141,21 @@ def main():
     # cats = coco.loadCats(coco.getCatIds())
     # nms = [cat['name'] for cat in cats]
     # catIds = coco.getCatIds(catNms=nms)
-    imgIds = np.sort(coco.getImgIds()).tolist()
+    # imgIds = np.sort(coco.getImgIds()).tolist()
+    imgIds = coco.getImgIds()
     # annIds = coco.getAnnIds(catIds=catIds)
     # all_anns = coco.loadAnns(ids=annIds)
 
     for img_id in imgIds:
         img = coco.loadImgs(img_id)[0]
-        image_path = '%s/images/%s/%s' % (cfg.data_dir, cfg.data_type, img['file_name'])
+        image_path = '%s/coco/%s/%s' % (cfg.data_dir, cfg.data_type, img['file_name'])
         w_img = int(img['width'])
         h_img = int(img['height'])
         if w_img < 1 or h_img < 1:
             continue
+
+        ann_ids = coco.getAnnIds(imgIds=img_id)
+        gt_anns = coco.loadAnns(ids=ann_ids)
 
         # plot gt mean and std
         # image = cv2.imread(image_path)
@@ -174,6 +178,24 @@ def main():
         if image is None:
             continue
         print('Loading image of id:', img_id)
+
+        # plotting the groundtruth
+        gt_image = image.copy()
+        gt_blend_mask = np.zeros(shape=gt_image.shape, dtype=np.uint8)
+        for ann_ in gt_anns:
+            if ann_['iscrowd'] == 1:
+                continue
+            polygons_ = ann_['segmentation']
+            use_color_key = COLOR_WORLD[random.randint(1, len(COLOR_WORLD)) - 1]
+            for poly in polygons_:
+                poly = np.array(poly).reshape((-1, 2))
+                cv2.polylines(gt_image, [poly.astype(np.int32)], True,
+                              color=switch_tuple(RGB_DICT[use_color_key]),
+                              thickness=2)
+                cv2.drawContours(gt_blend_mask, [poly.astype(np.int32)], contourIdx=-1,
+                                 color=switch_tuple(RGB_DICT[use_color_key]),
+                                 thickness=-1)
+
         original_image = image.copy()
         height, width = image.shape[0:2]
         padding = 127 if 'hourglass' in cfg.arch else 31
@@ -315,9 +337,13 @@ def main():
 
             dst_img = cv2.addWeighted(output_image, 0.4, blend_mask, 0.6, 0)
             dst_img[blend_mask == 0] = output_image[blend_mask == 0]
-            output_image = dst_img
 
-            cv2.imshow('Frames', output_image)
+            gt_dst_img = cv2.addWeighted(gt_image, 0.4, gt_blend_mask, 0.6, 0)
+            gt_dst_img[gt_blend_mask == 0] = gt_image[gt_blend_mask == 0]
+
+            cat_image = np.concatenate([dst_img, gt_dst_img], axis=1)
+
+            cv2.imshow('Frames', cat_image)
 
             if cv2.waitKey() & 0xFF == ord('q'):
                 break
